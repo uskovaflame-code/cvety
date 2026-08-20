@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>Полив</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+/* ===== СВЕТЛАЯ ТЕМА (по умолчанию) ===== */
+:root{
+  --bg:#EAF1E8;
+  --bg-2:#DFE9DA;
+  --ink:#12291D;
+  --ink-2:#5C7565;
+  --ink-3:#93A899;
+  --green:#2C6E49;
+  --water:#2F9089;
+  --water-ink:#1F7B74;
+  --feed:#B8811F;
+  --feed-ink:#8E6415;
+  --line:rgba(18,41,29,.08);
+
+  /* поверхности */
+  --g-card:linear-gradient(168deg,#FFFFFF 0%,#FBFDFA 58%,#F4F9F2 100%);
+  --g-glass:linear-gradient(150deg,rgba(255,255,255,.96),rgba(255,255,255,.82));
+  --g-tile:linear-gradient(160deg,#F3F8F1 0%,#E8F1E5 100%);
+  --g-green:linear-gradient(150deg,#4CA372 0%,#2C6E49 46%,#1D5238 100%);
+  --g-water:linear-gradient(150deg,#EDF9F7 0%,#D2EBE7 100%);
+  --g-feed:linear-gradient(150deg,#FCF3E1 0%,#F2E2C2 100%);
+  --g-soft:linear-gradient(150deg,#E4F1E6,#CFE4D5);
+  --g-avatar:linear-gradient(150deg,#E9F5EB 0%,#CFE6D6 100%);
+  --g-seg:linear-gradient(160deg,#DCE7D7,#D2E0CD);
+  --g-track:linear-gradient(160deg,#E2EBE0,#D5E1D2);
+  --g-cell:linear-gradient(150deg,#DEF0E2,#C7E2CF);
+  --g-sheet:linear-gradient(180deg,#F3F8F1 0%,#EAF1E8 22%);
+  --g-danger:linear-gradient(150deg,#F8E7E3,#EFD6D0);
+  --danger-ink:#A8493A;
+  --g-title:linear-gradient(120deg,#12291D 20%,#2C6E49 78%,#2F9089 100%);
+  --g-days:linear-gradient(140deg,#2C6E49,#2F9089);
+  --g-moist:linear-gradient(120deg,#2F9089 0%,#4FB08C 55%,#7ECBA0 100%);
+  --g-dry:linear-gradient(120deg,#C6A97A 0%,#DBC59A 100%);
+  --dry-ink:#9C7433;
+  --hero-glow:radial-gradient(circle,rgba(126,203,160,.4) 0%,rgba(126,203,160,0) 70%);
+
+  /* свет и тени */
+  --hi:rgba(255,255,255,.9);
+  --hi-soft:rgba(255,255,255,.55);
+  --edge:rgba(18,41,29,.035);
+  --glow:
+    radial-gradient(90% 55% at 12% -8%, rgba(126,203,160,.42) 0%, rgba(126,203,160,0) 62%),
+    radial-gradient(70% 45% at 100% 4%, rgba(101,190,186,.32) 0%, rgba(101,190,186,0) 60%),
+    radial-gradient(120% 60% at 50% 108%, rgba(44,110,73,.14) 0%, rgba(44,110,73,0) 70%);
+  --sh-card:0 1px 2px rgba(18,41,29,.04), 0 10px 24px -12px rgba(18,41,29,.22), 0 28px 48px -28px rgba(18,41,29,.28);
+  --sh-raise:inset 0 1px 0 var(--hi-soft), 0 1px 2px rgba(18,41,29,.08), 0 8px 16px -8px rgba(18,41,29,.28);
+  --sh-green:inset 0 1px 0 rgba(255,255,255,.32), 0 2px 4px rgba(29,82,56,.22), 0 12px 22px -10px rgba(29,82,56,.62), 0 24px 40px -22px rgba(29,82,56,.5);
+  --sh-press:inset 0 2px 6px rgba(18,41,29,.2);
+  --sh-green-press:inset 0 2px 5px rgba(12,44,28,.35), 0 2px 6px -3px rgba(29,82,56,.5);
+  --sh-inset:inset 0 2px 5px rgba(18,41,29,.13), inset 0 -1px 0 rgba(255,255,255,.5);
+  --sh-pill:inset 0 1px 0 var(--hi), 0 1px 2px rgba(18,41,29,.1), 0 6px 14px -8px rgba(18,41,29,.5);
+  --scrim:rgba(14,34,24,.4);
+  --top-fade:linear-gradient(180deg,#EAF1E8 62%,rgba(234,241,232,.86) 84%,rgba(234,241,232,0));
+  --r:22px;
+}
+
+/* ===== ТЁМНАЯ ТЕМА ===== */
+:root[data-theme="dark"]{
+  --bg:#0D1613;
+  --bg-2:#16211D;
+  --ink:#E9F2EC;
+  --ink-2:#A3B8AC;
+  --ink-3:#71887C;
+  --green:#54C68C;
+  --water:#46C6BB;
+  --water-ink:#7BDDD3;
+  --feed:#E0B14F;
+  --feed-ink:#EDC978;
+  --line:rgba(255,255,255,.08);
+
+  --g-card:linear-gradient(168deg,rgba(38,54,47,.94) 0%,rgba(26,39,34,.94) 62%,rgba(20,31,27,.96) 100%);
+  --g-glass:linear-gradient(150deg,rgba(255,255,255,.1),rgba(255,255,255,.045));
+  --g-tile:linear-gradient(160deg,rgba(255,255,255,.075),rgba(255,255,255,.03));
+  --g-green:linear-gradient(150deg,#3FBE85 0%,#249662 48%,#146B44 100%);
+  --g-water:linear-gradient(150deg,rgba(70,198,187,.26),rgba(70,198,187,.12));
+  --g-feed:linear-gradient(150deg,rgba(224,177,79,.26),rgba(224,177,79,.11));
+  --g-soft:linear-gradient(150deg,rgba(84,198,140,.24),rgba(84,198,140,.1));
+  --g-avatar:linear-gradient(150deg,rgba(84,198,140,.3),rgba(30,74,55,.65));
+  --g-seg:linear-gradient(160deg,rgba(0,0,0,.36),rgba(0,0,0,.22));
+  --g-track:linear-gradient(160deg,rgba(0,0,0,.42),rgba(0,0,0,.26));
+  --g-cell:linear-gradient(150deg,rgba(84,198,140,.3),rgba(84,198,140,.14));
+  --g-sheet:linear-gradient(180deg,#1A2621 0%,#101B17 26%);
+  --g-danger:linear-gradient(150deg,rgba(214,106,88,.26),rgba(214,106,88,.12));
+  --danger-ink:#F09E8B;
+  --g-title:linear-gradient(120deg,#EAF4EE 15%,#7BE0A9 70%,#5FD9CD 100%);
+  --g-days:linear-gradient(140deg,#7BE0A9,#5FD9CD);
+  --g-moist:linear-gradient(120deg,#3FC0B4 0%,#4FD79B 55%,#8BF0B8 100%);
+  --g-dry:linear-gradient(120deg,#9C7C4A 0%,#C7A468 100%);
+  --dry-ink:#D3AE72;
+  --hero-glow:radial-gradient(circle,rgba(84,198,140,.28) 0%,rgba(84,198,140,0) 70%);
+
+  --hi:rgba(255,255,255,.13);
+  --hi-soft:rgba(255,255,255,.08);
+  --edge:rgba(255,255,255,.07);
+  --glow:
+    radial-gradient(85% 50% at 10% -6%, rgba(46,168,116,.34) 0%, rgba(46,168,116,0) 64%),
+    radial-gradient(70% 45% at 102% 2%, rgba(38,150,150,.3) 0%, rgba(38,150,150,0) 62%),
+    radial-gradient(130% 65% at 50% 112%, rgba(28,102,72,.4) 0%, rgba(28,102,72,0) 72%);
+  --sh-card:0 1px 2px rgba(0,0,0,.5), 0 14px 30px -16px rgba(0,0,0,.85), 0 34px 60px -34px rgba(0,0,0,.9);
+  --sh-raise:inset 0 1px 0 var(--hi), 0 1px 2px rgba(0,0,0,.5), 0 10px 20px -10px rgba(0,0,0,.85);
+  --sh-green:inset 0 1px 0 rgba(255,255,255,.26), 0 2px 5px rgba(0,0,0,.45), 0 14px 26px -12px rgba(20,107,68,.9), 0 26px 46px -24px rgba(0,0,0,.7);
+  --sh-press:inset 0 2px 8px rgba(0,0,0,.6);
+  --sh-green-press:inset 0 3px 8px rgba(0,0,0,.55), 0 2px 6px -3px rgba(0,0,0,.6);
+  --sh-inset:inset 0 2px 6px rgba(0,0,0,.55), inset 0 -1px 0 rgba(255,255,255,.05);
+  --sh-pill:inset 0 1px 0 var(--hi), 0 2px 4px rgba(0,0,0,.5), 0 8px 18px -9px rgba(0,0,0,.9);
+  --scrim:rgba(0,0,0,.62);
+  --top-fade:linear-gradient(180deg,#0D1613 62%,rgba(13,22,19,.86) 84%,rgba(13,22,19,0));
+}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+html{background:var(--bg)}
+body{
+  position:relative;background:var(--bg);color:var(--ink);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-size:16px;line-height:1.45;
+  padding-bottom:calc(40px + env(safe-area-inset-bottom));
+  overscroll-behavior-y:none;
+  transition:background .3s,color .3s;
+}
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:var(--glow)}
+.wrap{max-width:520px;margin:0 auto;padding:0 16px;position:relative}
+h1,h2,h3{margin:0;font-family:ui-serif,Georgia,"Times New Roman",serif;font-weight:600;letter-spacing:-.02em}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+input,select,textarea{font:inherit;color:var(--ink);width:100%}
+
+/* шапка */
+.top{
+  position:sticky;top:0;z-index:20;
+  padding:calc(14px + env(safe-area-inset-top)) 16px 14px;
+  background:var(--top-fade);backdrop-filter:blur(6px);
+}
+.top-in{max-width:520px;margin:0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+.top-actions{display:flex;gap:8px;flex:none}
+.eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin-bottom:2px}
+.top h1{
+  font-size:28px;line-height:1.1;
+  background:var(--g-title);-webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.iconbtn{
+  width:44px;height:44px;border-radius:50%;flex:none;
+  background:var(--g-glass);box-shadow:var(--sh-raise);
+  display:grid;place-items:center;font-size:20px;color:var(--green);
+  transition:transform .12s,box-shadow .12s;
+}
+.iconbtn:active{transform:translateY(2px) scale(.97);box-shadow:var(--sh-press)}
+
+/* переключатель дом / студия */
+.seg{display:flex;gap:4px;padding:5px;border-radius:18px;background:var(--g-seg);box-shadow:var(--sh-inset);margin:2px 0 14px}
+.seg button{
+  flex:1;padding:10px 6px;border-radius:14px;font-size:14px;font-weight:600;color:var(--ink-2);
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  transition:transform .14s,box-shadow .18s,color .18s;
+}
+.seg button.on{background:var(--g-glass);color:var(--green);box-shadow:var(--sh-pill)}
+.seg button i{font-style:normal;font-size:11px;color:var(--ink-3);font-weight:600}
+.seg button.on i{color:var(--green);opacity:.65}
+.gtag{
+  display:inline-block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  padding:4px 10px;border-radius:999px;background:var(--g-soft);color:var(--green);font-weight:600;
+  box-shadow:inset 0 1px 0 var(--hi);margin-bottom:6px;
+}
+
+/* чипы */
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 16px}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;
+  background:var(--g-glass);font-size:13px;color:var(--ink-2);box-shadow:var(--sh-pill);
+}
+.chip b{color:var(--ink);font-weight:600}
+.chip.alarm{background:var(--g-water);color:var(--water-ink)}
+.chip.alarm b{color:var(--water-ink)}
+
+/* карточка растения */
+.card{
+  position:relative;background:var(--g-card);border-radius:var(--r);box-shadow:var(--sh-card);
+  padding:16px 16px 14px;margin-bottom:14px;overflow:hidden;
+  transition:transform .14s,box-shadow .14s;
+}
+.card::after{
+  content:"";position:absolute;inset:0;border-radius:var(--r);pointer-events:none;
+  box-shadow:inset 0 1px 0 var(--hi), inset 0 0 0 1px var(--edge);
+}
+.card:active{transform:translateY(2px)}
+.card-head{display:flex;gap:13px;align-items:flex-start}
+.avatar{
+  width:48px;height:48px;border-radius:16px;flex:none;background:var(--g-avatar);
+  display:grid;place-items:center;font-size:24px;
+  box-shadow:inset 0 1px 0 var(--hi), 0 6px 12px -8px rgba(0,0,0,.6);
+}
+.pname{font-family:ui-serif,Georgia,serif;font-size:19px;font-weight:600;letter-spacing:-.01em}
+.psub{font-size:13px;color:var(--ink-3);margin-top:1px}
+.pstate{margin-left:auto;text-align:right;flex:none}
+.days{
+  font-size:22px;font-family:ui-serif,Georgia,serif;line-height:1.1;
+  background:var(--g-days);-webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.dayslab{font-size:11px;color:var(--ink-3);letter-spacing:.04em}
+
+/* полоска влаги */
+.moist{margin-top:14px}
+.moist-track{height:11px;border-radius:99px;background:var(--g-track);box-shadow:var(--sh-inset);overflow:hidden}
+.moist-fill{
+  height:100%;border-radius:99px;background:var(--g-moist);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.5), 0 0 14px rgba(70,198,187,.55);
+  transition:width .5s ease;
+}
+.moist-fill.low{background:var(--g-dry);box-shadow:inset 0 1px 0 rgba(255,255,255,.4), 0 0 12px rgba(198,169,122,.45)}
+.moist-meta{display:flex;justify-content:space-between;margin-top:8px;font-size:12px;color:var(--ink-3)}
+.moist-meta .now{color:var(--water);font-weight:600}
+.moist-meta .now.low{color:var(--dry-ink)}
+
+/* объёмные кнопки действий */
+.quick{display:flex;gap:10px;margin-top:14px}
+.qbtn{
+  flex:1;padding:12px 8px;border-radius:16px;text-align:center;font-size:14px;font-weight:600;
+  color:var(--water-ink);background:var(--g-water);
+  box-shadow:inset 0 1px 0 var(--hi), 0 2px 3px rgba(0,0,0,.12), 0 10px 18px -10px rgba(47,144,137,.75);
+  transition:transform .12s,box-shadow .12s;
+}
+.qbtn.feed{color:var(--feed-ink);background:var(--g-feed);box-shadow:inset 0 1px 0 var(--hi), 0 2px 3px rgba(0,0,0,.12), 0 10px 18px -10px rgba(184,129,31,.7)}
+.qbtn:active{transform:translateY(3px);box-shadow:var(--sh-press)}
+
+/* пустой экран */
+.empty{background:var(--g-card);border-radius:var(--r);box-shadow:var(--sh-card);padding:36px 24px;text-align:center}
+.empty .leaf{font-size:42px;filter:drop-shadow(0 8px 14px rgba(31,92,66,.4))}
+.empty h3{font-size:19px;margin:10px 0 6px}
+.empty p{margin:0;color:var(--ink-2);font-size:14px}
+
+.addbtn{
+  width:100%;padding:16px;border-radius:20px;margin:6px 0 8px;
+  background:var(--g-green);color:#fff;font-weight:600;font-size:15px;letter-spacing:.01em;
+  box-shadow:var(--sh-green);transition:transform .12s,box-shadow .12s;
+}
+.addbtn:active{transform:translateY(3px);box-shadow:var(--sh-green-press)}
+.ghostbtn{
+  width:100%;padding:14px;border-radius:18px;margin-top:10px;
+  background:var(--g-tile);color:var(--ink-2);font-weight:600;font-size:14px;
+  box-shadow:var(--sh-raise);transition:transform .12s,box-shadow .12s;
+}
+.ghostbtn:active{transform:translateY(2px);box-shadow:var(--sh-press)}
+
+/* экран растения */
+.back{display:inline-flex;align-items:center;gap:6px;font-size:14px;color:var(--ink-2);padding:6px 2px}
+.hero{position:relative;background:var(--g-card);border-radius:26px;box-shadow:var(--sh-card);padding:20px;margin-bottom:14px;overflow:hidden}
+.hero::before{
+  content:"";position:absolute;top:-70px;right:-50px;width:210px;height:210px;border-radius:50%;
+  background:var(--hero-glow);pointer-events:none;
+}
+.hero-top{display:flex;gap:14px;align-items:center;position:relative}
+.hero .avatar{width:58px;height:58px;border-radius:20px;font-size:29px}
+.hero h2{font-size:24px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px;position:relative}
+.stat{background:var(--g-tile);border-radius:18px;padding:13px 14px;box-shadow:inset 0 1px 0 var(--hi), 0 6px 14px -10px rgba(0,0,0,.7)}
+.stat .v{font-family:ui-serif,Georgia,serif;font-size:20px;line-height:1.2}
+.stat .l{font-size:11px;color:var(--ink-3);letter-spacing:.04em;margin-top:2px}
+
+.block{background:var(--g-card);border-radius:var(--r);box-shadow:var(--sh-card);padding:18px;margin-bottom:14px}
+.block h3{font-size:16px;margin-bottom:14px}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--ink-3);margin-bottom:12px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle}
+.dot.w{background:var(--water)}
+.dot.f{background:var(--feed)}
+
+/* календарь */
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.cal .wd{text-align:center;font-size:10px;color:var(--ink-3);padding-bottom:4px;letter-spacing:.06em}
+.cell{
+  aspect-ratio:1;border-radius:13px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  font-size:12px;color:var(--ink-2);background:var(--g-tile);box-shadow:inset 0 1px 0 var(--hi-soft);
+}
+.cell.blank{background:none;box-shadow:none}
+.cell.today{box-shadow:inset 0 0 0 1.5px var(--green), inset 0 1px 0 var(--hi-soft);color:var(--green);font-weight:600}
+.cell.has{background:var(--g-cell);color:var(--ink);box-shadow:inset 0 1px 0 var(--hi), 0 4px 10px -7px rgba(0,0,0,.8)}
+.cell.has.today{box-shadow:inset 0 0 0 1.5px var(--green), 0 4px 10px -7px rgba(0,0,0,.8)}
+.cell .dots{display:flex;gap:3px;height:6px}
+.cell .dots i{width:5px;height:5px;border-radius:50%;display:block}
+.calnav{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.calnav .m{font-size:14px;font-weight:600}
+.calnav button{padding:6px 12px;border-radius:12px;background:var(--g-tile);color:var(--ink-2);font-size:15px;box-shadow:var(--sh-raise)}
+.calnav button:active{transform:translateY(2px);box-shadow:var(--sh-press)}
+
+/* списки */
+.rowlist{display:flex;flex-direction:column;gap:11px}
+.row{display:flex;gap:12px;align-items:flex-start;padding-bottom:11px;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0;padding-bottom:0}
+.rdate{font-size:12px;color:var(--ink-3);width:58px;flex:none;padding-top:3px}
+.rmain{flex:1;min-width:0}
+.tags{display:flex;gap:6px;flex-wrap:wrap}
+.tag{
+  font-size:12px;padding:4px 10px;border-radius:999px;font-weight:600;
+  background:var(--g-water);color:var(--water-ink);box-shadow:inset 0 1px 0 var(--hi);
+}
+.tag.feed{background:var(--g-feed);color:var(--feed-ink)}
+.tag.other{background:var(--g-soft);color:var(--green)}
+.rnote{font-size:13px;color:var(--ink-2);margin-top:5px;word-break:break-word}
+.rfert{font-size:13px;color:var(--feed-ink);margin-top:4px}
+.del{color:var(--ink-3);font-size:17px;padding:2px 4px;flex:none}
+.bar{height:9px;border-radius:99px;background:linear-gradient(90deg,var(--feed),var(--feed-ink));box-shadow:inset 0 1px 0 rgba(255,255,255,.35)}
+.fert-row{display:flex;align-items:center;gap:10px;font-size:14px}
+.fert-row .n{width:24px;text-align:right;color:var(--ink-3);font-size:13px;flex:none}
+.fert-row .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fert-row .track{width:88px;flex:none;border-radius:99px;overflow:hidden;background:var(--g-track);box-shadow:var(--sh-inset)}
+
+/* шторки */
+.scrim{position:fixed;inset:0;background:var(--scrim);backdrop-filter:blur(3px);z-index:40;opacity:0;pointer-events:none;transition:opacity .22s}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{
+  position:fixed;left:0;right:0;bottom:0;z-index:50;background:var(--g-sheet);
+  border-radius:28px 28px 0 0;padding:8px 18px calc(22px + env(safe-area-inset-bottom));
+  max-height:92vh;overflow-y:auto;
+  box-shadow:inset 0 1px 0 var(--hi), 0 -20px 50px -20px rgba(0,0,0,.6);
+  transform:translateY(102%);transition:transform .28s cubic-bezier(.32,.72,0,1);
+  max-width:520px;margin:0 auto;
+}
+.sheet.on{transform:translateY(0)}
+.grab{width:40px;height:5px;border-radius:99px;background:var(--ink-3);opacity:.4;margin:6px auto 16px}
+.sheet h3{font-size:20px;margin-bottom:16px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:12px;color:var(--ink-3);letter-spacing:.04em;margin-bottom:7px}
+.field input,.field textarea,.field select{
+  background:var(--g-glass);border:1px solid transparent;border-radius:16px;padding:13px 14px;outline:none;
+  box-shadow:inset 0 1px 0 var(--hi), 0 4px 10px -8px rgba(0,0,0,.7);
+  transition:border-color .18s,box-shadow .18s;
+}
+.field input:focus,.field textarea:focus,.field select:focus{
+  border-color:var(--green);
+  box-shadow:inset 0 1px 0 var(--hi), 0 0 0 4px rgba(84,198,140,.16);
+}
+.field input::placeholder,.field textarea::placeholder{color:var(--ink-3)}
+.field textarea{min-height:76px;resize:vertical}
+.two{display:flex;gap:10px}
+.two .field{flex:1}
+.picker{display:flex;gap:8px;flex-wrap:wrap}
+.pick{
+  padding:10px 13px;border-radius:16px;background:var(--g-glass);font-size:20px;line-height:1;
+  border:1.5px solid transparent;box-shadow:var(--sh-raise);transition:transform .12s,box-shadow .12s;
+}
+.pick.on{border-color:var(--green);background:var(--g-soft);box-shadow:inset 0 1px 0 var(--hi), 0 6px 14px -8px rgba(0,0,0,.7)}
+.pick:active{transform:translateY(2px)}
+.types{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.type{
+  padding:13px;border-radius:18px;background:var(--g-glass);border:1.5px solid transparent;
+  font-size:14px;font-weight:600;color:var(--ink-2);text-align:center;
+  box-shadow:var(--sh-raise);transition:transform .12s,box-shadow .12s,color .18s;
+}
+.type.on{border-color:var(--green);color:var(--green);background:var(--g-soft);box-shadow:inset 0 1px 0 var(--hi), 0 8px 16px -9px rgba(0,0,0,.8)}
+.type:active{transform:translateY(2px)}
+.danger{
+  width:100%;padding:14px;border-radius:18px;margin-top:10px;
+  background:var(--g-danger);color:var(--danger-ink);font-weight:600;font-size:14px;
+  box-shadow:inset 0 1px 0 var(--hi), 0 8px 16px -10px rgba(0,0,0,.7);
+}
+.danger:active{transform:translateY(2px);box-shadow:var(--sh-press)}
+
+/* тост */
+.toast{
+  position:fixed;left:50%;bottom:calc(26px + env(safe-area-inset-bottom));transform:translate(-50%,20px);
+  background:var(--g-green);color:#fff;padding:12px 20px;border-radius:99px;font-size:14px;z-index:80;
+  box-shadow:0 12px 28px -10px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.28);
+  opacity:0;pointer-events:none;transition:all .25s;
+}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.hidden{display:none!important}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="top-in">
+    <div>
+      <div class="eyebrow" id="today">—</div>
+      <h1 id="title">Мои растения</h1>
+    </div>
+    <div class="top-actions">
+      <button class="iconbtn" id="themeBtn" aria-label="Сменить тему">🌙</button>
+      <button class="iconbtn" id="topAdd" aria-label="Добавить растение">+</button>
+    </div>
+  </div>
+</div>
+
+<!-- ЭКРАН: СПИСОК -->
+<div class="wrap" id="screenHome">
+  <div class="seg" id="seg"></div>
+  <div class="chips" id="chips"></div>
+  <div id="list"></div>
+  <button class="addbtn" id="addPlant">Добавить растение</button>
+</div>
+
+<!-- ЭКРАН: РАСТЕНИЕ -->
+<div class="wrap hidden" id="screenPlant"></div>
+
+<div class="scrim" id="scrim"></div>
+
+<!-- ФОРМА РАСТЕНИЯ -->
+<div class="sheet" id="sheetPlant">
+  <div class="grab"></div>
+  <h3 id="plantSheetTitle">Новое растение</h3>
+  <div class="field">
+    <label>НАЗВАНИЕ</label>
+    <input id="fName" placeholder="Фикус у окна" autocomplete="off">
+  </div>
+  <div class="field">
+    <label>ЗНАЧОК</label>
+    <div class="picker" id="fEmoji"></div>
+  </div>
+  <div class="field">
+    <label>ГДЕ ЖИВЁТ</label>
+    <div class="seg" id="fGroup" style="margin:0"></div>
+  </div>
+  <div class="field">
+    <label>ТОЧНОЕ МЕСТО (необязательно)</label>
+    <input id="fPlace" placeholder="Спальня, южное окно" autocomplete="off">
+  </div>
+  <div class="two">
+    <div class="field">
+      <label>ПОЛИВ, РАЗ В … ДНЕЙ</label>
+      <input id="fWater" type="number" min="1" max="120" value="7" inputmode="numeric">
+    </div>
+    <div class="field">
+      <label>ПОДКОРМКА, РАЗ В … ДНЕЙ</label>
+      <input id="fFeed" type="number" min="1" max="365" value="21" inputmode="numeric">
+    </div>
+  </div>
+  <div class="field">
+    <label>ЗАМЕТКА О РАСТЕНИИ (необязательно)</label>
+    <textarea id="fNote" placeholder="Любит опрыскивание, боится сквозняка"></textarea>
+  </div>
+  <button class="addbtn" id="savePlant">Сохранить</button>
+  <button class="danger hidden" id="deletePlant">Удалить растение</button>
+</div>
+
+<!-- ФОРМА ЗАПИСИ -->
+<div class="sheet" id="sheetRec">
+  <div class="grab"></div>
+  <h3 id="recTitle">Запись</h3>
+  <div class="field">
+    <label>ЧТО СДЕЛАЛА</label>
+    <div class="types" id="rTypes"></div>
+  </div>
+  <div class="field">
+    <label>ДАТА</label>
+    <input id="rDate" type="date">
+  </div>
+  <div class="field hidden" id="fertField">
+    <label>ЧЕМ ПОДКОРМИЛА</label>
+    <input id="rFert" placeholder="Bona Forte для декоративнолистных" autocomplete="off">
+  </div>
+  <div class="field">
+    <label>ЗАМЕТКА (необязательно)</label>
+    <textarea id="rNote" placeholder="Земля пересохла, полила обильно"></textarea>
+  </div>
+  <button class="addbtn" id="saveRec">Сохранить запись</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------- Telegram ---------- */
+const TG = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+if (TG) { try { TG.ready(); TG.expand(); } catch(e){} }
+function buzz(style){ try{ TG && TG.HapticFeedback && TG.HapticFeedback.impactOccurred(style||'light'); }catch(e){} }
+function askConfirm(text){
+  return new Promise(r=>{
+    try{
+      if(TG && TG.showConfirm){ TG.showConfirm(text,ok=>r(!!ok)); return; }
+    }catch(e){}
+    r(window.confirm(text));
+  });
+}
+
+/* ---------- Хранилище: CloudStorage (у каждой свои данные) → localStorage → память ---------- */
+const KEY='plants', CHUNK=3500;
+const mem={};
+const CS = TG && TG.CloudStorage && TG.CloudStorage.setItem ? TG.CloudStorage : null;
+
+function csGet(k){ return new Promise(r=>{ try{ CS.getItem(k,(e,v)=>r(e?null:v)); }catch(e){ r(null); } }); }
+function csSet(k,v){ return new Promise(r=>{ try{ CS.setItem(k,v,()=>r()); }catch(e){ r(); } }); }
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return mem[k]!==undefined?mem[k]:null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){ mem[k]=v; } }
+
+async function loadData(){
+  let raw=null;
+  if(CS){
+    const n=parseInt(await csGet(KEY+'_n')||'0',10);
+    if(n>0){ let s=''; for(let i=0;i<n;i++) s+=(await csGet(KEY+'_'+i))||''; raw=s; }
+  }
+  if(!raw) raw=lsGet(KEY);
+  try{
+    const d=JSON.parse(raw);
+    if(d&&d.plants){
+      d.records=d.records||[];
+      d.filter=d.filter||'all';
+      d.theme=d.theme||'light';
+      d.plants.forEach(p=>{ if(!p.group) p.group='home'; });   // старые растения → Дом
+      return d;
+    }
+  }catch(e){}
+
+  // первый запуск: если в хранилище пусто — берём стартовый набор из data.json (если он лежит рядом)
+  try{
+    const res=await fetch('data.json',{cache:'no-store'});
+    if(res.ok){
+      const seed=await res.json();
+      if(seed && Array.isArray(seed.plants)){
+        (seed.plants||[]).forEach((p,i)=>{ if(!p.id) p.id='p'+(Date.now()+i); if(!p.group) p.group='home'; if(!p.emoji) p.emoji='🪴'; });
+        return {
+          plants:seed.plants,
+          records:Array.isArray(seed.records)?seed.records:[],
+          filter:seed.filter||'all',
+          theme:seed.theme||'light'
+        };
+      }
+    }
+  }catch(e){}   // нет файла или открыто локально — просто стартуем пустыми
+
+  return {plants:[],records:[],filter:'all',theme:'light'};
+}
+async function saveData(){
+  const raw=JSON.stringify(DB);
+  lsSet(KEY,raw);                                   // локальная копия всегда
+  if(CS){
+    const parts=[]; for(let i=0;i<raw.length;i+=CHUNK) parts.push(raw.slice(i,i+CHUNK));
+    for(let i=0;i<parts.length;i++) await csSet(KEY+'_'+i,parts[i]);
+    await csSet(KEY+'_n',String(parts.length));
+  }
+}
+
+/* ---------- Данные ---------- */
+let DB={plants:[],records:[],filter:'all',theme:'light'};
+let currentPlant=null, editingPlant=null, recPlantId=null, calShift=0;
+const EMOJIS=['🪴','🌿','🌱','🌵','🌸','🌺','🌷','🍀','🌴','🎍','🌾','🍃'];
+const TYPES=[
+  {id:'water',label:'Полив',cls:''},
+  {id:'feed', label:'Подкормка',cls:'feed'},
+  {id:'spray',label:'Опрыскивание',cls:'other'},
+  {id:'repot',label:'Пересадка',cls:'other'}
+];
+let pickedEmoji='🪴', pickedTypes=[], pickedGroup='home';
+const GROUPS=[{id:'home',label:'Дом',emoji:'🏠'},{id:'studio',label:'Студия',emoji:'💅'}];
+const gLabel=id=>(GROUPS.find(g=>g.id===id)||GROUPS[0]).label;
+const inFilter=p=>DB.filter==='all'||p.group===DB.filter;
+
+/* ---------- Даты ---------- */
+const MN=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+const MNn=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+const iso=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
+const today=()=>iso(new Date());
+function daysBetween(a,b){ return Math.round((new Date(b+'T00:00')-new Date(a+'T00:00'))/86400000); }
+function plural(n,f){ const m=n%10,h=n%100; return (m===1&&h!==11)?f[0]:(m>=2&&m<=4&&(h<10||h>=20))?f[1]:f[2]; }
+const dayWord=n=>plural(n,['день','дня','дней']);
+const timesWord=n=>plural(n,['раз','раза','раз']);
+function shortDate(d){ const x=new Date(d+'T00:00'); return x.getDate()+' '+MN[x.getMonth()].slice(0,3); }
+
+/* ---------- Вычисления ---------- */
+const recsOf=id=>DB.records.filter(r=>r.plantId===id).sort((a,b)=>b.date.localeCompare(a.date));
+function lastOf(id,type){ const r=recsOf(id).find(r=>r.types.includes(type)); return r?r.date:null; }
+function dryness(p){                       // 0 — только полила, 1 и больше — пора
+  const l=lastOf(p.id,'water'); if(!l) return 1.2;
+  return daysBetween(l,today())/Math.max(1,p.waterEvery);
+}
+function avgGap(id,type){
+  const ds=recsOf(id).filter(r=>r.types.includes(type)).map(r=>r.date).sort();
+  if(ds.length<2) return null;
+  let s=0; for(let i=1;i<ds.length;i++) s+=daysBetween(ds[i-1],ds[i]);
+  return Math.round(s/(ds.length-1));
+}
+const countLast=(id,type,days)=>recsOf(id).filter(r=>r.types.includes(type)&&daysBetween(r.date,today())<=days).length;
+
+/* ---------- UI helpers ---------- */
+const $=s=>document.querySelector(s);
+function toast(t){ const el=$('#toast'); el.textContent=t; el.classList.add('on'); clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('on'),1800); }
+function openSheet(id){ $('#scrim').classList.add('on'); $(id).classList.add('on'); }
+function closeSheets(){ $('#scrim').classList.remove('on'); $('#sheetPlant').classList.remove('on'); $('#sheetRec').classList.remove('on'); }
+$('#scrim').onclick=closeSheets;
+const esc=s=>String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------- Экран: список ---------- */
+function renderHome(){
+  $('#screenHome').classList.remove('hidden');
+  $('#screenPlant').classList.add('hidden');
+  $('#title').textContent='Мои растения';
+  $('#topAdd').classList.remove('hidden');
+  currentPlant=null;
+  try{ TG && TG.BackButton && TG.BackButton.hide(); }catch(e){}
+
+  // переключатель дом / студия
+  const cnt=g=>DB.plants.filter(p=>g==='all'||p.group===g).length;
+  $('#seg').innerHTML=[{id:'all',label:'Все'},...GROUPS].map(g=>
+    `<button data-filter="${g.id}" class="${DB.filter===g.id?'on':''}">${g.emoji?g.emoji+' ':''}${g.label}<i>${cnt(g.id)}</i></button>`
+  ).join('');
+  $('#seg').classList.toggle('hidden',!DB.plants.length);
+
+  const shown=DB.plants.filter(inFilter);
+  const need=shown.filter(p=>dryness(p)>=1).length;
+  $('#chips').innerHTML = shown.length ? `
+    <span class="chip">${DB.filter==='all'?'Растений':gLabel(DB.filter)} <b>${shown.length}</b></span>
+    <span class="chip ${need?'alarm':''}">${need?'Пора полить':'Все политы'} ${need?`<b>${need}</b>`:'✓'}</span>` : '';
+
+  if(!shown.length){
+    $('#list').innerHTML=`<div class="empty"><div class="leaf">🌱</div>
+      <h3>${DB.plants.length?`В разделе «${gLabel(DB.filter)}» пусто`:'Здесь будут твои растения'}</h3>
+      <p>${DB.plants.length?'Добавь сюда растение — или переключись на другой раздел.':'Добавь первое — и приложение начнёт считать дни за тебя.'}</p></div>`;
+    return;
+  }
+
+  const sorted=[...shown].sort((a,b)=>dryness(b)-dryness(a));
+  $('#list').innerHTML=sorted.map(p=>{
+    const lw=lastOf(p.id,'water');
+    const d=lw?daysBetween(lw,today()):null;
+    const dry=dryness(p);
+    const fill=Math.max(0,Math.min(100,(1-dry)*100));
+    const low=dry>=0.8;
+    const state=lw?(d===0?'сегодня':d+' '+dayWord(d)):'—';
+    const sub=[DB.filter==='all'?gLabel(p.group):'',p.place,`раз в ${p.waterEvery} ${dayWord(p.waterEvery)}`].filter(Boolean).join(' · ');
+    return `<div class="card" data-open="${p.id}">
+      <div class="card-head">
+        <div class="avatar">${p.emoji}</div>
+        <div style="min-width:0">
+          <div class="pname">${esc(p.name)}</div>
+          <div class="psub">${esc(sub)}</div>
+        </div>
+        <div class="pstate">
+          <div class="days">${state}</div>
+          <div class="dayslab">${lw?'с полива':'нет записей'}</div>
+        </div>
+      </div>
+      <div class="moist">
+        <div class="moist-track"><div class="moist-fill ${low?'low':''}" style="width:${fill}%"></div></div>
+        <div class="moist-meta">
+          <span>влага в земле</span>
+          <span class="now ${low?'low':''}">${dry>=1?'пора полить':Math.round(fill)+'%'}</span>
+        </div>
+      </div>
+      <div class="quick">
+        <button class="qbtn" data-quick="water" data-id="${p.id}">Полила</button>
+        <button class="qbtn feed" data-quick="feed" data-id="${p.id}">Подкормила</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ---------- Экран: растение ---------- */
+function renderPlant(id){
+  const p=DB.plants.find(x=>x.id===id); if(!p) return renderHome();
+  currentPlant=id;
+  $('#screenHome').classList.add('hidden');
+  $('#screenPlant').classList.remove('hidden');
+  $('#title').textContent='Растение';
+  $('#topAdd').classList.add('hidden');
+  try{ TG && TG.BackButton && TG.BackButton.show(); }catch(e){}
+
+  const rs=recsOf(id);
+  const lw=lastOf(id,'water'), lf=lastOf(id,'feed');
+  const dw=lw?daysBetween(lw,today()):null, df=lf?daysBetween(lf,today()):null;
+  const ag=avgGap(id,'water');
+
+  // удобрения
+  const fmap={};
+  rs.forEach(r=>{ if(r.types.includes('feed')&&r.fert){ const k=r.fert.trim(); if(k) fmap[k]=(fmap[k]||0)+1; }});
+  const ferts=Object.entries(fmap).sort((a,b)=>b[1]-a[1]);
+  const fmax=ferts.length?ferts[0][1]:1;
+
+  // календарь
+  const base=new Date(); base.setDate(1); base.setMonth(base.getMonth()+calShift);
+  const y=base.getFullYear(), m=base.getMonth();
+  const first=(new Date(y,m,1).getDay()+6)%7, total=new Date(y,m+1,0).getDate();
+  const byDate={}; rs.forEach(r=>{ (byDate[r.date]=byDate[r.date]||new Set()); r.types.forEach(t=>byDate[r.date].add(t)); });
+  let cells=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(w=>`<div class="wd">${w}</div>`).join('');
+  for(let i=0;i<first;i++) cells+='<div class="cell blank"></div>';
+  for(let d=1;d<=total;d++){
+    const key=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const s=byDate[key];
+    const dots=s?[...s].filter(t=>t==='water'||t==='feed').map(t=>`<i style="background:${t==='water'?'var(--water)':'var(--feed)'}"></i>`).join(''):'';
+    cells+=`<div class="cell ${s?'has':''} ${key===today()?'today':''}"><span>${d}</span><span class="dots">${dots}</span></div>`;
+  }
+
+  $('#screenPlant').innerHTML=`
+    <button class="back" id="goBack">‹ Все растения</button>
+    <div class="hero">
+      <div class="hero-top">
+        <div class="avatar">${p.emoji}</div>
+        <div style="min-width:0;flex:1">
+          <div class="gtag">${gLabel(p.group)}</div>
+          <h2>${esc(p.name)}</h2>
+          <div class="psub">${esc(p.place||'')}</div>
+        </div>
+        <button class="iconbtn" id="editPlant" aria-label="Изменить">✎</button>
+      </div>
+      ${p.note?`<div class="rnote" style="margin-top:12px">${esc(p.note)}</div>`:''}
+      <div class="stats">
+        <div class="stat"><div class="v">${lw?(dw===0?'сегодня':dw+' '+dayWord(dw)):'—'}</div><div class="l">С ПОСЛЕДНЕГО ПОЛИВА</div></div>
+        <div class="stat"><div class="v">${lf?(df===0?'сегодня':df+' '+dayWord(df)):'—'}</div><div class="l">С ПОДКОРМКИ</div></div>
+        <div class="stat"><div class="v">${ag?ag+' '+dayWord(ag):'—'}</div><div class="l">СРЕДНИЙ ИНТЕРВАЛ ПОЛИВА</div></div>
+        <div class="stat"><div class="v">${countLast(id,'water',30)}</div><div class="l">ПОЛИВОВ ЗА 30 ДНЕЙ</div></div>
+      </div>
+      <div class="quick">
+        <button class="qbtn" data-quick="water" data-id="${p.id}">Полила</button>
+        <button class="qbtn feed" data-quick="feed" data-id="${p.id}">Подкормила</button>
+      </div>
+      <button class="ghostbtn" id="openRec">Запись с датой и заметкой</button>
+    </div>
+
+    <div class="block">
+      <div class="calnav">
+        <button id="prevM">‹</button>
+        <div class="m">${MNn[m]} ${y}</div>
+        <button id="nextM">›</button>
+      </div>
+      <div class="legend"><span><i class="dot w"></i>полив</span><span><i class="dot f"></i>подкормка</span></div>
+      <div class="cal">${cells}</div>
+    </div>
+
+    <div class="block">
+      <h3>Чем подкармливала</h3>
+      ${ferts.length?`<div class="rowlist">${ferts.map(([n,c])=>`
+        <div class="fert-row">
+          <div class="nm">${esc(n)}</div>
+          <div class="track"><div class="bar" style="width:${Math.round(c/fmax*100)}%"></div></div>
+          <div class="n">${c}</div>
+        </div>`).join('')}</div>`
+      :`<p class="psub" style="margin:0">Пока ни одной подкормки. Запиши первую — и здесь появится список средств.</p>`}
+    </div>
+
+    <div class="block">
+      <h3>История${rs.length?` · ${rs.length} ${timesWord(rs.length)}`:''}</h3>
+      ${rs.length?`<div class="rowlist">${rs.slice(0,60).map(r=>`
+        <div class="row">
+          <div class="rdate">${shortDate(r.date)}</div>
+          <div class="rmain">
+            <div class="tags">${r.types.map(t=>{const T=TYPES.find(x=>x.id===t);return T?`<span class="tag ${T.cls}">${T.label}</span>`:''}).join('')}</div>
+            ${r.fert?`<div class="rfert">${esc(r.fert)}</div>`:''}
+            ${r.note?`<div class="rnote">${esc(r.note)}</div>`:''}
+          </div>
+          <button class="del" data-del="${r.id}" aria-label="Удалить">×</button>
+        </div>`).join('')}</div>`
+      :`<p class="psub" style="margin:0">Записей нет. Нажми «Полила» — и здесь появится первая.</p>`}
+    </div>`;
+
+  $('#goBack').onclick=()=>{ calShift=0; renderHome(); };
+  $('#editPlant').onclick=()=>openPlantSheet(p);
+  $('#openRec').onclick=()=>openRecSheet(p.id);
+  $('#prevM').onclick=()=>{ calShift--; renderPlant(id); };
+  $('#nextM').onclick=()=>{ calShift++; renderPlant(id); };
+}
+
+/* ---------- Формы ---------- */
+function openPlantSheet(p){
+  editingPlant=p||null;
+  $('#plantSheetTitle').textContent=p?'Изменить растение':'Новое растение';
+  $('#fName').value=p?p.name:'';
+  $('#fPlace').value=p?(p.place||''):'';
+  $('#fWater').value=p?p.waterEvery:7;
+  $('#fFeed').value=p?p.feedEvery:21;
+  $('#fNote').value=p?(p.note||''):'';
+  pickedEmoji=p?p.emoji:'🪴';
+  $('#fEmoji').innerHTML=EMOJIS.map(e=>`<button class="pick ${e===pickedEmoji?'on':''}" data-emoji="${e}">${e}</button>`).join('');
+  pickedGroup = p ? p.group : (DB.filter!=='all'?DB.filter:'home');   // добавляешь из «Студии» — сразу студия
+  $('#fGroup').innerHTML=GROUPS.map(g=>
+    `<button data-group="${g.id}" class="${pickedGroup===g.id?'on':''}">${g.emoji} ${g.label}</button>`).join('');
+  $('#deletePlant').classList.toggle('hidden',!p);
+  openSheet('#sheetPlant');
+}
+$('#fEmoji').onclick=e=>{
+  const b=e.target.closest('[data-emoji]'); if(!b) return;
+  pickedEmoji=b.dataset.emoji;
+  [...$('#fEmoji').children].forEach(c=>c.classList.toggle('on',c===b));
+  buzz();
+};
+$('#fGroup').onclick=e=>{
+  const b=e.target.closest('[data-group]'); if(!b) return;
+  pickedGroup=b.dataset.group;
+  [...$('#fGroup').children].forEach(c=>c.classList.toggle('on',c===b));
+  buzz();
+};
+$('#savePlant').onclick=async()=>{
+  const name=$('#fName').value.trim();
+  if(!name){ $('#fName').focus(); toast('Впиши название растения'); return; }
+  const data={
+    name, emoji:pickedEmoji, group:pickedGroup, place:$('#fPlace').value.trim(),
+    waterEvery:Math.max(1,parseInt($('#fWater').value)||7),
+    feedEvery:Math.max(1,parseInt($('#fFeed').value)||21),
+    note:$('#fNote').value.trim()
+  };
+  if(editingPlant) Object.assign(editingPlant,data);
+  else DB.plants.push(Object.assign({id:'p'+Date.now(),createdAt:today()},data));
+  await saveData(); closeSheets(); buzz('medium');
+  toast(editingPlant?'Изменения сохранены':'Растение добавлено');
+  currentPlant?renderPlant(currentPlant):renderHome();
+};
+$('#deletePlant').onclick=async()=>{
+  if(!editingPlant) return;
+  if(!await askConfirm('Удалить «'+editingPlant.name+'» вместе со всеми записями?')) return;
+  DB.records=DB.records.filter(r=>r.plantId!==editingPlant.id);
+  DB.plants=DB.plants.filter(p=>p.id!==editingPlant.id);
+  await saveData(); closeSheets(); toast('Растение удалено'); renderHome();
+};
+
+function openRecSheet(plantId,preset){
+  recPlantId=plantId;
+  const p=DB.plants.find(x=>x.id===plantId);
+  $('#recTitle').textContent=p?p.emoji+' '+p.name:'Запись';
+  pickedTypes=preset?[preset]:['water'];
+  $('#rDate').value=today();
+  $('#rFert').value=''; $('#rNote').value='';
+  renderTypes(); openSheet('#sheetRec');
+}
+function renderTypes(){
+  $('#rTypes').innerHTML=TYPES.map(t=>`<button class="type ${pickedTypes.includes(t.id)?'on':''}" data-type="${t.id}">${t.label}</button>`).join('');
+  $('#fertField').classList.toggle('hidden',!pickedTypes.includes('feed'));
+}
+$('#rTypes').onclick=e=>{
+  const b=e.target.closest('[data-type]'); if(!b) return;
+  const id=b.dataset.type;
+  pickedTypes.includes(id)?pickedTypes=pickedTypes.filter(x=>x!==id):pickedTypes.push(id);
+  renderTypes(); buzz();
+};
+$('#saveRec').onclick=async()=>{
+  if(!pickedTypes.length){ toast('Отметь, что ты сделала'); return; }
+  DB.records.push({
+    id:'r'+Date.now(), plantId:recPlantId, date:$('#rDate').value||today(),
+    types:[...pickedTypes], fert:pickedTypes.includes('feed')?$('#rFert').value.trim():'',
+    note:$('#rNote').value.trim()
+  });
+  await saveData(); closeSheets(); buzz('medium'); toast('Запись сохранена');
+  currentPlant?renderPlant(currentPlant):renderHome();
+};
+
+/* ---------- Тема ---------- */
+const THEME_BG={light:'#EAF1E8',dark:'#0D1613'};
+function applyTheme(t){
+  document.documentElement.dataset.theme = t==='dark' ? 'dark' : 'light';
+  const btn=document.getElementById('themeBtn');
+  if(btn){ btn.textContent = t==='dark' ? '☀️' : '🌙'; btn.setAttribute('aria-label', t==='dark'?'Светлая тема':'Тёмная тема'); }
+  try{
+    if(TG){
+      TG.setHeaderColor && TG.setHeaderColor(THEME_BG[t]||THEME_BG.light);
+      TG.setBackgroundColor && TG.setBackgroundColor(THEME_BG[t]||THEME_BG.light);
+    }
+  }catch(e){}
+}
+
+/* ---------- Быстрые действия и общие клики ---------- */
+document.addEventListener('click',async e=>{
+  const q=e.target.closest('[data-quick]');
+  if(q){
+    e.stopPropagation();
+    const type=q.dataset.quick;
+    if(type==='feed'){ openRecSheet(q.dataset.id,'feed'); return; }
+    DB.records.push({id:'r'+Date.now(),plantId:q.dataset.id,date:today(),types:['water'],fert:'',note:''});
+    await saveData(); buzz('medium'); toast('Полив записан · сегодня');
+    currentPlant?renderPlant(currentPlant):renderHome();
+    return;
+  }
+  const del=e.target.closest('[data-del]');
+  if(del){
+    if(!await askConfirm('Удалить эту запись?')) return;
+    DB.records=DB.records.filter(r=>r.id!==del.dataset.del);
+    await saveData(); toast('Запись удалена'); renderPlant(currentPlant);
+    return;
+  }
+  const card=e.target.closest('[data-open]');
+  if(card){ calShift=0; renderPlant(card.dataset.open); }
+});
+$('#seg').onclick=async e=>{
+  const b=e.target.closest('[data-filter]'); if(!b) return;
+  DB.filter=b.dataset.filter; buzz(); await saveData(); renderHome();
+};
+$('#themeBtn').onclick=async()=>{
+  DB.theme = DB.theme==='dark' ? 'light' : 'dark';
+  applyTheme(DB.theme); buzz();
+  toast(DB.theme==='dark'?'Тёмная тема':'Светлая тема');
+  await saveData();
+};
+$('#addPlant').onclick=()=>openPlantSheet(null);
+$('#topAdd').onclick=()=>openPlantSheet(null);
+if(TG){ TG.BackButton && TG.BackButton.onClick(()=>{ currentPlant?renderHome():TG.close(); }); }
+
+/* ---------- Старт ---------- */
+(async()=>{
+  const d=new Date();
+  $('#today').textContent=d.getDate()+' '+MN[d.getMonth()];
+  DB=await loadData();
+  applyTheme(DB.theme);
+  renderHome();
+})();
+</script>
+</body>
+</html>
