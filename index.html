@@ -229,6 +229,51 @@ input,select,textarea{font:inherit;color:var(--ink);width:100%}
 .qbtn.feed{color:var(--feed-ink);background:var(--g-feed);box-shadow:inset 0 1px 0 var(--hi), 0 2px 3px rgba(0,0,0,.12), 0 10px 18px -10px rgba(184,129,31,.7)}
 .qbtn:active{transform:translateY(3px);box-shadow:var(--sh-press)}
 
+/* выбор нескольких растений */
+.tools{display:flex;justify-content:flex-end;margin:-6px 0 12px}
+.linkbtn{
+  padding:8px 14px;border-radius:999px;font-size:13px;font-weight:600;
+  color:var(--green);background:var(--g-glass);box-shadow:var(--sh-pill);
+  transition:transform .12s,box-shadow .12s;
+}
+.linkbtn:active{transform:translateY(2px);box-shadow:var(--sh-press)}
+.linkbtn.off{color:var(--ink-2)}
+.card.picked{box-shadow:var(--sh-card), 0 0 0 2px var(--green)}
+.selmark{
+  position:absolute;top:14px;right:14px;width:26px;height:26px;border-radius:50%;z-index:2;
+  display:grid;place-items:center;font-size:14px;color:transparent;
+  background:var(--g-tile);box-shadow:inset 0 0 0 1.5px var(--line);
+}
+.card.picked .selmark{background:var(--g-green);color:#fff;box-shadow:var(--sh-green)}
+.bulkbar{
+  position:fixed;left:0;right:0;bottom:0;z-index:70;
+  padding:12px 16px calc(14px + env(safe-area-inset-bottom));
+  background:var(--g-sheet);box-shadow:0 -10px 30px -12px rgba(0,0,0,.5);
+}
+.bulkbar-in{max-width:520px;margin:0 auto;display:flex;gap:10px;align-items:center}
+.bulkbar .cnt{flex:1;font-size:14px;color:var(--ink-2)}
+.bulkbar .cnt b{color:var(--ink);font-weight:600}
+.bulkbar .go{
+  flex:1;padding:14px;border-radius:18px;background:var(--g-green);color:#fff;
+  font-weight:600;font-size:14px;box-shadow:var(--sh-green);
+  transition:transform .12s,box-shadow .12s;
+}
+.bulkbar .go:active{transform:translateY(3px);box-shadow:var(--sh-green-press)}
+.bulkbar .go[disabled]{opacity:.4;box-shadow:none}
+body.bulk{padding-bottom:calc(130px + env(safe-area-inset-bottom))}
+
+/* сохранённые подкормки */
+.fchips{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
+.fchip{
+  display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border-radius:999px;
+  font-size:13px;color:var(--ink-2);background:var(--g-glass);box-shadow:var(--sh-pill);
+  transition:transform .12s;
+}
+.fchip.on{color:var(--feed-ink);background:var(--g-feed)}
+.fchip:active{transform:translateY(2px)}
+.fchip .x{font-size:16px;color:var(--ink-3);line-height:1;padding:0 2px}
+.fhint{font-size:12px;color:var(--ink-3);margin-top:8px}
+
 /* пустой экран */
 .empty{background:var(--g-card);border-radius:var(--r);box-shadow:var(--sh-card);padding:36px 24px;text-align:center}
 .empty .leaf{font-size:42px;filter:drop-shadow(0 8px 14px rgba(31,92,66,.4))}
@@ -392,12 +437,27 @@ input,select,textarea{font:inherit;color:var(--ink);width:100%}
 <div class="wrap" id="screenHome">
   <div class="seg" id="seg"></div>
   <div class="chips" id="chips"></div>
+  <div class="tools hidden" id="tools">
+    <button class="linkbtn" id="selToggle">Отметить несколько</button>
+  </div>
   <div id="list"></div>
   <button class="addbtn" id="addPlant">Добавить растение</button>
 </div>
 
 <!-- ЭКРАН: РАСТЕНИЕ -->
 <div class="wrap hidden" id="screenPlant"></div>
+
+<!-- ПАНЕЛЬ ВЫБОРА НЕСКОЛЬКИХ -->
+<div class="bulkbar hidden" id="bulkBar">
+  <div class="bulkbar-in">
+    <div class="cnt" id="selCnt">Выбрано <b>0</b></div>
+    <button class="linkbtn" id="selAll">Выбрать все</button>
+    <button class="linkbtn off" id="selCancel">Отмена</button>
+  </div>
+  <div class="bulkbar-in" style="margin-top:10px">
+    <button class="go" id="selGo" disabled>Записать</button>
+  </div>
+</div>
 
 <div class="scrim" id="scrim"></div>
 
@@ -454,6 +514,7 @@ input,select,textarea{font:inherit;color:var(--ink);width:100%}
   <div class="field hidden" id="fertField">
     <label>ЧЕМ ПОДКОРМИЛА</label>
     <input id="rFert" placeholder="Bona Forte для декоративнолистных" autocomplete="off">
+    <div class="fchips" id="fertChips"></div>
   </div>
   <div class="field">
     <label>ЗАМЕТКА (необязательно)</label>
@@ -501,6 +562,7 @@ async function loadData(){
       d.records=d.records||[];
       d.filter=d.filter||'all';
       d.theme=d.theme||'light';
+      d.ferts=Array.isArray(d.ferts)?d.ferts:fertsFromRecords(d.records);
       d.plants.forEach(p=>{ if(!p.group) p.group='home'; });   // старые растения → Дом
       return d;
     }
@@ -517,13 +579,14 @@ async function loadData(){
           plants:seed.plants,
           records:Array.isArray(seed.records)?seed.records:[],
           filter:seed.filter||'all',
-          theme:seed.theme||'light'
+          theme:seed.theme||'light',
+          ferts:[]
         };
       }
     }
   }catch(e){}   // нет файла или открыто локально — просто стартуем пустыми
 
-  return {plants:[],records:[],filter:'all',theme:'light'};
+  return {plants:[],records:[],filter:'all',theme:'light',ferts:[]};
 }
 async function saveData(){
   const raw=JSON.stringify(DB);
@@ -536,8 +599,9 @@ async function saveData(){
 }
 
 /* ---------- Данные ---------- */
-let DB={plants:[],records:[],filter:'all',theme:'light'};
+let DB={plants:[],records:[],filter:'all',theme:'light',ferts:[]};
 let currentPlant=null, editingPlant=null, recPlantId=null, calShift=0;
+let selMode=false, selected=new Set(), bulkIds=null;
 const EMOJIS=['🪴','🌿','🌱','🌵','🌸','🌺','🌷','🍀','🌴','🎍','🌾','🍃'];
 const TYPES=[
   {id:'water',label:'Полив',cls:''},
@@ -579,8 +643,14 @@ const countLast=(id,type,days)=>recsOf(id).filter(r=>r.types.includes(type)&&day
 /* ---------- UI helpers ---------- */
 const $=s=>document.querySelector(s);
 function toast(t){ const el=$('#toast'); el.textContent=t; el.classList.add('on'); clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('on'),1800); }
-function openSheet(id){ $('#scrim').classList.add('on'); $(id).classList.add('on'); }
-function closeSheets(){ $('#scrim').classList.remove('on'); $('#sheetPlant').classList.remove('on'); $('#sheetRec').classList.remove('on'); }
+function openSheet(id){
+  $('#scrim').classList.add('on'); $(id).classList.add('on');
+  $('#bulkBar').classList.add('hidden'); document.body.classList.remove('bulk');   // панель выбора не должна светиться сквозь форму
+}
+function closeSheets(){
+  $('#scrim').classList.remove('on'); $('#sheetPlant').classList.remove('on'); $('#sheetRec').classList.remove('on');
+  if(selMode){ $('#bulkBar').classList.remove('hidden'); document.body.classList.add('bulk'); }
+}
 $('#scrim').onclick=closeSheets;
 const esc=s=>String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
@@ -606,6 +676,12 @@ function renderHome(){
     <span class="chip">${DB.filter==='all'?'Растений':gLabel(DB.filter)} <b>${shown.length}</b></span>
     <span class="chip ${need?'alarm':''}">${need?'Пора полить':'Все политы'} ${need?`<b>${need}</b>`:'✓'}</span>` : '';
 
+  // кнопка «отметить несколько» — только когда растений больше одного
+  $('#tools').classList.toggle('hidden', selMode || shown.length<2);
+  $('#bulkBar').classList.toggle('hidden', !selMode);
+  document.body.classList.toggle('bulk', selMode);
+  if(selMode) updateBulkBar(shown);
+
   if(!shown.length){
     $('#list').innerHTML=`<div class="empty"><div class="leaf">🌱</div>
       <h3>${DB.plants.length?`В разделе «${gLabel(DB.filter)}» пусто`:'Здесь будут твои растения'}</h3>
@@ -622,17 +698,20 @@ function renderHome(){
     const low=dry>=0.8;
     const state=lw?(d===0?'сегодня':d+' '+dayWord(d)):'—';
     const sub=[DB.filter==='all'?gLabel(p.group):'',p.place,`раз в ${p.waterEvery} ${dayWord(p.waterEvery)}`].filter(Boolean).join(' · ');
-    return `<div class="card" data-open="${p.id}">
+    const picked=selected.has(p.id);
+    const attr=selMode?`data-pick="${p.id}"`:`data-open="${p.id}"`;
+    return `<div class="card ${picked?'picked':''}" ${attr}>
+      ${selMode?`<div class="selmark">✓</div>`:''}
       <div class="card-head">
         <div class="avatar">${p.emoji}</div>
         <div style="min-width:0">
           <div class="pname">${esc(p.name)}</div>
           <div class="psub">${esc(sub)}</div>
         </div>
-        <div class="pstate">
+        ${selMode?'':`<div class="pstate">
           <div class="days">${state}</div>
           <div class="dayslab">${lw?'с полива':'нет записей'}</div>
-        </div>
+        </div>`}
       </div>
       <div class="moist">
         <div class="moist-track"><div class="moist-fill ${low?'low':''}" style="width:${fill}%"></div></div>
@@ -641,12 +720,24 @@ function renderHome(){
           <span class="now ${low?'low':''}">${dry>=1?'пора полить':Math.round(fill)+'%'}</span>
         </div>
       </div>
-      <div class="quick">
+      ${selMode?'':`<div class="quick">
         <button class="qbtn" data-quick="water" data-id="${p.id}">Полила</button>
         <button class="qbtn feed" data-quick="feed" data-id="${p.id}">Подкормила</button>
-      </div>
+      </div>`}
     </div>`;
   }).join('');
+}
+
+/* ---------- Выбор нескольких растений ---------- */
+function enterSel(){ selMode=true; selected.clear(); renderHome(); }
+function exitSel(){ selMode=false; selected.clear(); bulkIds=null; document.body.classList.remove('bulk'); renderHome(); }
+function updateBulkBar(shown){
+  shown = shown || DB.plants.filter(inFilter);
+  const n=selected.size;
+  $('#selCnt').innerHTML='Выбрано <b>'+n+'</b>';
+  $('#selGo').disabled = !n;
+  $('#selGo').textContent = n ? 'Записать · '+n : 'Записать';
+  $('#selAll').textContent = (n && n===shown.length) ? 'Снять все' : 'Выбрать все';
 }
 
 /* ---------- Экран: растение ---------- */
@@ -805,8 +896,59 @@ $('#deletePlant').onclick=async()=>{
   await saveData(); closeSheets(); toast('Растение удалено'); renderHome();
 };
 
+/* ---------- Память подкормок ---------- */
+const fnorm=s=>String(s||'').trim().toLowerCase();
+function fertsFromRecords(recs){
+  const out=[];
+  (recs||[]).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).forEach(r=>{
+    const f=String(r.fert||'').trim();
+    if(f && !out.some(x=>fnorm(x)===fnorm(f))) out.push(f);
+  });
+  return out.slice(0,12);
+}
+function rememberFert(f){
+  f=String(f||'').trim(); if(!f) return;
+  if(!Array.isArray(DB.ferts)) DB.ferts=[];
+  DB.ferts=DB.ferts.filter(x=>fnorm(x)!==fnorm(f));
+  DB.ferts.unshift(f);
+  DB.ferts=DB.ferts.slice(0,12);
+}
+function lastFertOf(plantId){
+  if(!plantId) return '';
+  const r=recsOf(plantId).find(r=>r.types.includes('feed') && String(r.fert||'').trim());
+  return r?String(r.fert).trim():'';
+}
+function renderFertChips(){
+  const cur=fnorm($('#rFert').value);
+  const list=Array.isArray(DB.ferts)?DB.ferts:[];
+  $('#fertChips').innerHTML=list.map(f=>
+    `<span class="fchip ${fnorm(f)===cur?'on':''}" data-fert="${esc(f)}">${esc(f)}<button class="x" data-forget="${esc(f)}" aria-label="Убрать из списка">×</button></span>`
+  ).join('');
+  $('#fertChips').classList.toggle('hidden',!list.length);
+}
+function prefillFert(){
+  if(!$('#rFert').value.trim()){
+    $('#rFert').value = lastFertOf(recPlantId) || (Array.isArray(DB.ferts)&&DB.ferts[0]) || '';
+  }
+  renderFertChips();
+}
+$('#fertChips').onclick=async e=>{
+  const x=e.target.closest('[data-forget]');
+  if(x){
+    e.stopPropagation();
+    const f=x.dataset.forget;
+    DB.ferts=(DB.ferts||[]).filter(v=>v!==f);
+    if($('#rFert').value.trim()===f) $('#rFert').value='';
+    await saveData(); renderFertChips(); buzz(); return;
+  }
+  const c=e.target.closest('[data-fert]');
+  if(c){ $('#rFert').value=c.dataset.fert; renderFertChips(); buzz(); }
+};
+$('#rFert').oninput=renderFertChips;
+
+/* ---------- Форма записи ---------- */
 function openRecSheet(plantId,preset){
-  recPlantId=plantId;
+  recPlantId=plantId; bulkIds=null;
   const p=DB.plants.find(x=>x.id===plantId);
   $('#recTitle').textContent=p?p.emoji+' '+p.name:'Запись';
   pickedTypes=preset?[preset]:['water'];
@@ -814,9 +956,20 @@ function openRecSheet(plantId,preset){
   $('#rFert').value=''; $('#rNote').value='';
   renderTypes(); openSheet('#sheetRec');
 }
+function openBulkSheet(ids){
+  bulkIds=[...ids]; recPlantId=null;
+  const n=bulkIds.length;
+  $('#recTitle').textContent=n+' '+plural(n,['растение','растения','растений']);
+  pickedTypes=['water'];
+  $('#rDate').value=today();
+  $('#rFert').value=''; $('#rNote').value='';
+  renderTypes(); openSheet('#sheetRec');
+}
 function renderTypes(){
   $('#rTypes').innerHTML=TYPES.map(t=>`<button class="type ${pickedTypes.includes(t.id)?'on':''}" data-type="${t.id}">${t.label}</button>`).join('');
-  $('#fertField').classList.toggle('hidden',!pickedTypes.includes('feed'));
+  const showFert=pickedTypes.includes('feed');
+  $('#fertField').classList.toggle('hidden',!showFert);
+  if(showFert) prefillFert();
 }
 $('#rTypes').onclick=e=>{
   const b=e.target.closest('[data-type]'); if(!b) return;
@@ -826,13 +979,24 @@ $('#rTypes').onclick=e=>{
 };
 $('#saveRec').onclick=async()=>{
   if(!pickedTypes.length){ toast('Отметь, что ты сделала'); return; }
-  DB.records.push({
-    id:'r'+Date.now(), plantId:recPlantId, date:$('#rDate').value||today(),
-    types:[...pickedTypes], fert:pickedTypes.includes('feed')?$('#rFert').value.trim():'',
-    note:$('#rNote').value.trim()
+  const ids = (bulkIds && bulkIds.length) ? bulkIds : [recPlantId];
+  if(!ids.length || !ids[0]){ toast('Не выбрано растение'); return; }
+  const date=$('#rDate').value||today();
+  const fert=pickedTypes.includes('feed')?$('#rFert').value.trim():'';
+  const note=$('#rNote').value.trim();
+  const stamp=Date.now();
+  ids.forEach((pid,i)=>{
+    DB.records.push({
+      id:'r'+(stamp+i), plantId:pid, date,
+      types:[...pickedTypes], fert, note
+    });
   });
-  await saveData(); closeSheets(); buzz('medium'); toast('Запись сохранена');
-  currentPlant?renderPlant(currentPlant):renderHome();
+  if(fert) rememberFert(fert);
+  const many=ids.length>1;
+  await saveData(); closeSheets(); buzz('medium');
+  toast(many ? ('Записано · '+ids.length+' '+plural(ids.length,['растение','растения','растений'])) : 'Запись сохранена');
+  if(bulkIds){ exitSel(); }
+  else { currentPlant?renderPlant(currentPlant):renderHome(); }
 };
 
 /* ---------- Тема ---------- */
@@ -868,12 +1032,19 @@ document.addEventListener('click',async e=>{
     await saveData(); toast('Запись удалена'); renderPlant(currentPlant);
     return;
   }
+  const pick=e.target.closest('[data-pick]');
+  if(pick){
+    const id=pick.dataset.pick;
+    selected.has(id)?selected.delete(id):selected.add(id);
+    buzz(); renderHome();
+    return;
+  }
   const card=e.target.closest('[data-open]');
   if(card){ calShift=0; renderPlant(card.dataset.open); }
 });
 $('#seg').onclick=async e=>{
   const b=e.target.closest('[data-filter]'); if(!b) return;
-  DB.filter=b.dataset.filter; buzz(); await saveData(); renderHome();
+  DB.filter=b.dataset.filter; selected.clear(); buzz(); await saveData(); renderHome();
 };
 $('#themeBtn').onclick=async()=>{
   DB.theme = DB.theme==='dark' ? 'light' : 'dark';
@@ -881,6 +1052,15 @@ $('#themeBtn').onclick=async()=>{
   toast(DB.theme==='dark'?'Тёмная тема':'Светлая тема');
   await saveData();
 };
+$('#selToggle').onclick=()=>{ enterSel(); buzz(); };
+$('#selCancel').onclick=()=>{ exitSel(); buzz(); };
+$('#selAll').onclick=()=>{
+  const shown=DB.plants.filter(inFilter);
+  if(selected.size===shown.length) selected.clear();
+  else shown.forEach(p=>selected.add(p.id));
+  buzz(); renderHome();
+};
+$('#selGo').onclick=()=>{ if(selected.size) openBulkSheet(selected); };
 $('#addPlant').onclick=()=>openPlantSheet(null);
 $('#topAdd').onclick=()=>openPlantSheet(null);
 if(TG){ TG.BackButton && TG.BackButton.onClick(()=>{ currentPlant?renderHome():TG.close(); }); }
