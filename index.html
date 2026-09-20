@@ -837,7 +837,7 @@ function renderHome(){
     return `<div class="card ${picked?'picked':''}" ${attr}>
       ${selMode?`<div class="selmark">✓</div>`:''}
       <div class="card-head">
-        ${PHOTOS[p.id]?`<div class="avatar photo" style="background-image:url('${PHOTOS[p.id]}')"></div>`:`<div class="avatar">${p.emoji}</div>`}
+        ${PHOTOS[p.id]?`<div class="avatar photo" style="background-image:url('${photoUrl(p.id)}')"></div>`:`<div class="avatar">${p.emoji}</div>`}
         <div style="min-width:0">
           <div class="pname">${esc(p.name)}</div>
           <div class="psub">${esc(sub)}</div>
@@ -912,7 +912,7 @@ function renderPlant(id){
   $('#screenPlant').innerHTML=`
     <button class="back" id="goBack">‹ Все растения</button>
     <div class="hero">
-      ${PHOTOS[p.id]?`<div class="hero-photo" style="background-image:url('${PHOTOS[p.id]}')"></div>`:''}
+      ${PHOTOS[p.id]?`<div class="hero-photo" style="background-image:url('${photoUrl(p.id)}')"></div>`:''}
       <div class="hero-top">
         <div class="avatar">${p.emoji}</div>
         <div style="min-width:0;flex:1">
@@ -1101,6 +1101,26 @@ const PCHUNK=4000;          // предел ячейки телеграма — 
 const PMAX=44000;           // потолок на одно фото: 11 ячеек
 const PSIDE=400;            // длинная сторона после сжатия
 let pendingPhoto;           // undefined — не трогали, null — убрать, строка — новое
+/* Фото в разметку целиком не вставляем: браузер разбирал бы его заново
+   при каждой перерисовке. Готовим короткую ссылку и держим её наготове. */
+const PHOTO_URL={};
+function photoUrl(id){
+  if(PHOTO_URL[id]) return PHOTO_URL[id];
+  const d=PHOTOS[id];
+  if(!d) return '';
+  try{
+    const bin=atob(d.slice(d.indexOf(',')+1));
+    const arr=new Uint8Array(bin.length);
+    for(let k=0;k<bin.length;k++) arr[k]=bin.charCodeAt(k);
+    PHOTO_URL[id]=URL.createObjectURL(new Blob([arr],{type:'image/jpeg'}));
+  }catch(e){ PHOTO_URL[id]=d; }
+  return PHOTO_URL[id];
+}
+function forgetPhotoUrl(id){
+  const u=PHOTO_URL[id];
+  if(u && u.indexOf('blob:')===0){ try{ URL.revokeObjectURL(u); }catch(e){} }
+  delete PHOTO_URL[id];
+}
 
 function csGetMany(keys){
   // getItems есть не во всех версиях — если его нет, читаем по одному
@@ -1145,6 +1165,7 @@ function fileToThumb(file){
 }
 
 async function savePhoto(plantId,dataUri){
+  forgetPhotoUrl(plantId);
   PHOTOS[plantId]=dataUri;
   lsSet('ph_'+plantId,dataUri);
   if(!CS) return true;
@@ -1154,6 +1175,7 @@ async function savePhoto(plantId,dataUri){
   return true;
 }
 async function dropPhoto(plantId){
+  forgetPhotoUrl(plantId);
   delete PHOTOS[plantId];
   try{ lsDel('ph_'+plantId); }catch(e){}
   if(!CS) return;
@@ -1183,7 +1205,7 @@ async function loadPhotos(){
     const n=parseInt(counts['ph_'+id+'_n']||'0',10);
     if(!n) return;
     let s=''; for(let i=0;i<n;i++) s+=(PARTS['ph_'+id+'_'+i]||'');
-    if(s && s!==PHOTOS[id]){ PHOTOS[id]=s; lsSet('ph_'+id,s); touched=true; }
+    if(s && s!==PHOTOS[id]){ forgetPhotoUrl(id); PHOTOS[id]=s; lsSet('ph_'+id,s); touched=true; }
   });
   return touched;
 }
