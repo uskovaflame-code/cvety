@@ -751,16 +751,23 @@ async function writeSlot(prefix,raw){
 }
 /* Две копии: свежая (раз в день) и недельная — на случай, если беду
    заметили не сразу и свежая успела перезаписаться уже испорченной. */
+/* Две копии проверяются независимо: недельная не должна зависеть
+   от того, сделана ли уже свежая за сегодня. */
 async function makeBackup(force){
   if(!CS || !READ_OK || !LOADED_RAW || LOADED_RAW.length<60) return false;
   if(!DB.plants.length && !DB.records.length) return false;
+  let did=false;
   try{
-    const at=await csGet(BAK+'_at');
-    if(!force && at===today()) return false;
     const wAt=await csGet(BAKW+'_at');
-    if(!wAt || !(daysBetween(wAt,today())<7)) await writeSlot(BAKW,LOADED_RAW);
-    return await writeSlot(BAK,LOADED_RAW);
-  }catch(e){ return false; }
+    if(!wAt || !(daysBetween(wAt,today())<7)){
+      if(await writeSlot(BAKW,LOADED_RAW)) did=true;
+    }
+    const at=await csGet(BAK+'_at');
+    if(force || at!==today()){
+      if(await writeSlot(BAK,LOADED_RAW)) did=true;
+    }
+  }catch(e){}
+  return did;
 }
 
 /* Полоса-предупреждение вместо тихой потери данных */
