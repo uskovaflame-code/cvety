@@ -311,6 +311,13 @@ body.bulk{padding-bottom:calc(130px + env(safe-area-inset-bottom))}
   box-shadow:var(--sh-green);transition:transform .12s,box-shadow .12s;
 }
 .addbtn:active{transform:translateY(3px);box-shadow:var(--sh-green-press)}
+.rows{margin-bottom:14px}
+.drow{display:flex;justify-content:space-between;gap:12px;padding:8px 0;
+      border-bottom:1px solid var(--line);font-size:14px;color:var(--ink-2)}
+.drow:last-child{border-bottom:0}
+.drow b{color:var(--ink);font-weight:600;text-align:right}
+.drow b.warn{color:var(--feed-ink)}
+.drow b.bad{color:var(--danger-ink)}
 .ghostbtn{
   width:100%;padding:14px;border-radius:18px;margin-top:10px;
   background:var(--g-tile);color:var(--ink-2);font-weight:600;font-size:14px;
@@ -478,6 +485,7 @@ body.bulk{padding-bottom:calc(130px + env(safe-area-inset-bottom))}
   </div>
   <div id="list"></div>
   <button class="addbtn" id="addPlant">Добавить растение</button>
+  <button class="ghostbtn" id="openData">Данные и копии</button>
 </div>
 
 <!-- ЭКРАН: РАСТЕНИЕ -->
@@ -577,6 +585,21 @@ body.bulk{padding-bottom:calc(130px + env(safe-area-inset-bottom))}
     <button class="lockbtn hidden" id="lockBtn"></button>
   </div>
 </div>
+
+<!-- ДАННЫЕ И КОПИИ -->
+<div class="sheet" id="sheetData">
+  <div class="grab"></div>
+  <h3>Данные и копии</h3>
+  <div id="dataInfo" class="rows">Смотрю…</div>
+  <button class="addbtn" id="bakNow">Сделать копию сейчас</button>
+  <button class="ghostbtn" id="bakRestore">Восстановить из копии</button>
+  <button class="ghostbtn" id="dataShow">Показать данные для переноса</button>
+  <div class="field hidden" id="dumpField" style="margin-top:14px">
+    <label>ВСЕ ТВОИ ЗАПИСИ</label>
+    <textarea id="dumpText" readonly style="min-height:120px;font-size:11px"></textarea>
+    <button class="ghostbtn" id="dumpCopy">Скопировать</button>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -594,7 +617,7 @@ function askConfirm(text){
 }
 
 /* ---------- Хранилище: CloudStorage (у каждой свои данные) → localStorage → память ---------- */
-const KEY='plants', CHUNK=3500, BAK='bak';
+const KEY='plants', CHUNK=3500, BAK='bak', BAKW='bakw';
 const mem={};
 const CS = TG && TG.CloudStorage && TG.CloudStorage.setItem ? TG.CloudStorage : null;
 
@@ -604,7 +627,24 @@ let LOADED_RAW='';     // что успешно прочитали — из эт
 let BAK_OFFER=null;    // разобранная резервная копия, если основное не читается
 
 function csGet(k){ return new Promise(r=>{ try{ CS.getItem(k,(e,v)=>r(e?null:v)); }catch(e){ r(null); } }); }
-function csSet(k,v){ return new Promise(r=>{ try{ CS.setItem(k,v,()=>r()); }catch(e){ r(); } }); }
+/* Запись в облако теперь честно сообщает, получилось или нет.
+   Раньше ошибка проглатывалась молча — и данные могли уехать наполовину. */
+function csSet(k,v){
+  return new Promise(r=>{
+    try{ CS.setItem(k,v,(e,ok)=>r(!e && ok!==false)); }catch(e){ r(false); }
+  });
+}
+function cloudKeys(){
+  if(!CS || typeof CS.getKeys!=='function') return Promise.resolve(null);
+  return new Promise(r=>{ try{ CS.getKeys((e,v)=>r(e?null:(v||[]))); }catch(e){ r(null); } });
+}
+/* Хватит ли ячеек ещё на одно фото: 1024 — потолок телеграма */
+async function photoRoom(len){
+  const keys=await cloudKeys();
+  if(!keys) return {ok:true,used:-1,need:0};
+  const need=Math.ceil(len/PCHUNK)+1;
+  return {ok:(keys.length+need)<=990, used:keys.length, need:need};
+}
 function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return mem[k]!==undefined?mem[k]:null; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){ mem[k]=v; } }
 function lsDel(k){ try{ localStorage.removeItem(k); }catch(e){} delete mem[k]; }
@@ -686,27 +726,41 @@ async function loadData(){
 async function saveData(){
   if(!READ_OK){ showLock(); return false; }         // не читалось — не пишем
   const raw=JSON.stringify(DB);
-  lsSet(KEY,raw);                                   // локальная копия всегда
+  lsSet(KEY,raw);                                   // локальная копия всегда, она же страховка
   if(CS){
     const parts=[]; for(let i=0;i<raw.length;i+=CHUNK) parts.push(raw.slice(i,i+CHUNK));
-    for(let i=0;i<parts.length;i++) await csSet(KEY+'_'+i,parts[i]);
-    await csSet(KEY+'_n',String(parts.length));
+    for(let i=0;i<parts.length;i++){
+      if(!await csSet(KEY+'_'+i,parts[i])) return failSave();
+    }
+    if(!await csSet(KEY+'_n',String(parts.length))) return failSave();
   }
   LOADED_RAW=raw;
   return true;
 }
+function failSave(){
+  toast('Телеграм не принял запись — сохранила на телефоне');
+  return false;
+}
 
-/* Раз в день откладываем снимок — из него можно будет восстановиться */
-async function makeBackup(){
-  if(!CS || !READ_OK || !LOADED_RAW || LOADED_RAW.length<60) return;
-  if(!DB.plants.length && !DB.records.length) return;
+/* Один слот копии: куски, счётчик, дата */
+async function writeSlot(prefix,raw){
+  const ps=[]; for(let i=0;i<raw.length;i+=CHUNK) ps.push(raw.slice(i,i+CHUNK));
+  for(let i=0;i<ps.length;i++){ if(!await csSet(prefix+'_'+i,ps[i])) return false; }
+  if(!await csSet(prefix+'_n',String(ps.length))) return false;
+  return await csSet(prefix+'_at',today());
+}
+/* Две копии: свежая (раз в день) и недельная — на случай, если беду
+   заметили не сразу и свежая успела перезаписаться уже испорченной. */
+async function makeBackup(force){
+  if(!CS || !READ_OK || !LOADED_RAW || LOADED_RAW.length<60) return false;
+  if(!DB.plants.length && !DB.records.length) return false;
   try{
-    if((await csGet(BAK+'_at'))===today()) return;
-    const ps=[]; for(let i=0;i<LOADED_RAW.length;i+=CHUNK) ps.push(LOADED_RAW.slice(i,i+CHUNK));
-    for(let i=0;i<ps.length;i++) await csSet(BAK+'_'+i,ps[i]);
-    await csSet(BAK+'_n',String(ps.length));
-    await csSet(BAK+'_at',today());
-  }catch(e){}
+    const at=await csGet(BAK+'_at');
+    if(!force && at===today()) return false;
+    const wAt=await csGet(BAKW+'_at');
+    if(!wAt || !(daysBetween(wAt,today())<7)) await writeSlot(BAKW,LOADED_RAW);
+    return await writeSlot(BAK,LOADED_RAW);
+  }catch(e){ return false; }
 }
 
 /* Полоса-предупреждение вместо тихой потери данных */
@@ -782,7 +836,7 @@ function openSheet(id){
   $('#bulkBar').classList.add('hidden'); document.body.classList.remove('bulk');   // панель выбора не должна светиться сквозь форму
 }
 function closeSheets(){
-  $('#scrim').classList.remove('on'); $('#sheetPlant').classList.remove('on'); $('#sheetRec').classList.remove('on');
+  $('#scrim').classList.remove('on'); $('#sheetPlant').classList.remove('on'); $('#sheetRec').classList.remove('on'); $('#sheetData').classList.remove('on');
   if(selMode){ $('#bulkBar').classList.remove('hidden'); document.body.classList.add('bulk'); }
 }
 $('#scrim').onclick=closeSheets;
@@ -1246,6 +1300,11 @@ $('#fPhotoInput').onchange=async e=>{
   toast('Обрабатываю фото…');
   const thumb=await fileToThumb(f);
   if(!thumb){ toast('Не получилось прочитать это фото'); return; }
+  const room=await photoRoom(thumb.length);
+  if(!room.ok){
+    toast('В облаке мало места: занято '+room.used+' из 1024 ячеек');
+    return;
+  }
   pendingPhoto=thumb;
   paintPhotoField();
   buzz('medium');
@@ -1318,6 +1377,76 @@ $('#saveRec').onclick=async()=>{
   toast(many ? ('Записано · '+ids.length+' '+plural(ids.length,['растение','растения','растений'])) : 'Запись сохранена');
   if(bulkIds){ exitSel(); }
   else { currentPlant?renderPlant(currentPlant):renderHome(); }
+};
+
+
+/* ---------- Данные и копии ---------- */
+function drow(k,v,cls){ return '<div class="drow"><span>'+esc(k)+'</span><b class="'+(cls||'')+'">'+esc(v)+'</b></div>'; }
+
+async function openDataSheet(){
+  $('#dumpField').classList.add('hidden');
+  $('#dataInfo').innerHTML='<div class="drow"><span>Смотрю…</span></div>';
+  openSheet('#sheetData');
+  let html=drow('Растений',DB.plants.length)+drow('Записей',DB.records.length);
+  if(CS){
+    const at=await csGet(BAK+'_at');
+    const wAt=await csGet(BAKW+'_at');
+    const keys=await cloudKeys();
+    html+=drow('Свежая копия', at?shortDate(at):'ещё нет', at?'':'warn');
+    html+=drow('Недельная копия', wAt?shortDate(wAt):'ещё нет', wAt?'':'warn');
+    if(keys){
+      const left=1024-keys.length;
+      html+=drow('Занято ячеек', keys.length+' из 1024', left<80?'bad':(left<200?'warn':''));
+      if(left<200) html+='<div class="photonote">Ячейки тратят в основном фото. Если станет мало — убери фото у пары растений.</div>';
+    }
+  } else {
+    html+=drow('Облако','недоступно','bad');
+    html+='<div class="photonote">Открой приложение через бота — тогда записи лягут в облако телеграма.</div>';
+  }
+  $('#dataInfo').innerHTML=html;
+}
+
+$('#openData').onclick=openDataSheet;
+
+$('#bakNow').onclick=async()=>{
+  if(!CS){ toast('Облако недоступно'); return; }
+  $('#bakNow').textContent='Делаю копию…';
+  const ok=await makeBackup(true);
+  $('#bakNow').textContent='Сделать копию сейчас';
+  toast(ok?'Копия сделана':'Копию сделать не вышло');
+  if(ok) openDataSheet();
+};
+
+$('#bakRestore').onclick=async()=>{
+  if(!CS){ toast('Облако недоступно'); return; }
+  const b=await readChunks(BAK);
+  const w=await readChunks(BAKW);
+  const bd=b.n&&!b.holes?tryParse(b.raw):null;
+  const wd=w.n&&!w.holes?tryParse(w.raw):null;
+  const pick=bd||wd;
+  if(!pick){ toast('Годной копии не нашлось'); return; }
+  const raw=bd?b.raw:w.raw;
+  const at=await csGet((bd?BAK:BAKW)+'_at');
+  const txt='Вернуть копию от '+(at?shortDate(at):'—')+'? В ней растений '+
+            pick.plants.length+', записей '+(pick.records||[]).length+
+            '. То, что сейчас в приложении, будет заменено.';
+  if(!await askConfirm(txt)) return;
+  DB=fillDefaults(pick); LOADED_RAW=raw; READ_OK=true;
+  await saveData();
+  closeSheets(); currentPlant=null; renderHome();
+  toast('Копия возвращена');
+};
+
+$('#dataShow').onclick=()=>{
+  $('#dumpField').classList.remove('hidden');
+  $('#dumpText').value=JSON.stringify(DB);
+  $('#dumpText').scrollIntoView({block:'nearest'});
+};
+$('#dumpCopy').onclick=()=>{
+  const t=$('#dumpText');
+  try{ t.select(); navigator.clipboard.writeText(t.value); }catch(e){}
+  $('#dumpCopy').textContent='Скопировано';
+  setTimeout(()=>{ $('#dumpCopy').textContent='Скопировать'; },1600);
 };
 
 /* ---------- Тема ---------- */
