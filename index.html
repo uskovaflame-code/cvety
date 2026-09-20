@@ -274,6 +274,31 @@ body.bulk{padding-bottom:calc(130px + env(safe-area-inset-bottom))}
 .fchip .x{font-size:16px;color:var(--ink-3);line-height:1;padding:0 2px}
 .fhint{font-size:12px;color:var(--ink-3);margin-top:8px}
 
+/* фото растения */
+.avatar.photo{background-size:cover;background-position:center;font-size:0}
+.hero-photo{
+  margin:-20px -20px 16px;height:170px;position:relative;
+  background-size:cover;background-position:center;background-color:var(--g-tile);
+}
+.hero-photo::after{content:"";position:absolute;inset:0;box-shadow:inset 0 -46px 56px -34px rgba(0,0,0,.5)}
+.photorow{display:flex;gap:11px;align-items:center}
+.photoprev{
+  width:72px;height:72px;border-radius:22px;flex:none;
+  background:var(--g-avatar);background-size:cover;background-position:center;
+  display:grid;place-items:center;font-size:30px;
+  box-shadow:inset 0 1px 0 var(--hi), 0 6px 12px -8px rgba(0,0,0,.6);
+}
+.photoprev.has{font-size:0}
+.photobtns{display:flex;flex-direction:column;gap:8px;flex:1;min-width:0}
+.photobtn{
+  padding:11px 14px;border-radius:15px;font-size:13px;font-weight:600;
+  color:var(--ink-2);background:var(--g-tile);box-shadow:var(--sh-raise);
+  transition:transform .12s,box-shadow .12s;
+}
+.photobtn.main{color:var(--green)}
+.photobtn:active{transform:translateY(2px);box-shadow:var(--sh-press)}
+.photonote{font-size:12px;color:var(--ink-3);margin-top:8px}
+
 /* пустой экран */
 .empty{background:var(--g-card);border-radius:var(--r);box-shadow:var(--sh-card);padding:36px 24px;text-align:center}
 .empty .leaf{font-size:42px;filter:drop-shadow(0 8px 14px rgba(31,92,66,.4))}
@@ -470,6 +495,18 @@ body.bulk{padding-bottom:calc(130px + env(safe-area-inset-bottom))}
     <input id="fName" placeholder="Фикус у окна" autocomplete="off">
   </div>
   <div class="field">
+    <label>ФОТО (необязательно)</label>
+    <div class="photorow">
+      <div class="photoprev" id="fPhotoPrev">🪴</div>
+      <div class="photobtns">
+        <button type="button" class="photobtn main" id="fPhotoPick">Добавить фото</button>
+        <button type="button" class="photobtn hidden" id="fPhotoDrop">Убрать фото</button>
+      </div>
+    </div>
+    <div class="photonote">Фото уменьшится — так оно поместится в облако телеграма.</div>
+    <input type="file" accept="image/*" id="fPhotoInput" style="display:none">
+  </div>
+  <div class="field">
     <label>ЗНАЧОК</label>
     <div class="picker" id="fEmoji"></div>
   </div>
@@ -548,6 +585,7 @@ function csGet(k){ return new Promise(r=>{ try{ CS.getItem(k,(e,v)=>r(e?null:v))
 function csSet(k,v){ return new Promise(r=>{ try{ CS.setItem(k,v,()=>r()); }catch(e){ r(); } }); }
 function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return mem[k]!==undefined?mem[k]:null; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){ mem[k]=v; } }
+function lsDel(k){ try{ localStorage.removeItem(k); }catch(e){} delete mem[k]; }
 
 async function loadData(){
   let raw=null;
@@ -703,7 +741,7 @@ function renderHome(){
     return `<div class="card ${picked?'picked':''}" ${attr}>
       ${selMode?`<div class="selmark">✓</div>`:''}
       <div class="card-head">
-        <div class="avatar">${p.emoji}</div>
+        ${PHOTOS[p.id]?`<div class="avatar photo" style="background-image:url('${PHOTOS[p.id]}')"></div>`:`<div class="avatar">${p.emoji}</div>`}
         <div style="min-width:0">
           <div class="pname">${esc(p.name)}</div>
           <div class="psub">${esc(sub)}</div>
@@ -778,6 +816,7 @@ function renderPlant(id){
   $('#screenPlant').innerHTML=`
     <button class="back" id="goBack">‹ Все растения</button>
     <div class="hero">
+      ${PHOTOS[p.id]?`<div class="hero-photo" style="background-image:url('${PHOTOS[p.id]}')"></div>`:''}
       <div class="hero-top">
         <div class="avatar">${p.emoji}</div>
         <div style="min-width:0;flex:1">
@@ -858,6 +897,7 @@ function openPlantSheet(p){
   pickedGroup = p ? p.group : (DB.filter!=='all'?DB.filter:'home');   // добавляешь из «Студии» — сразу студия
   $('#fGroup').innerHTML=GROUPS.map(g=>
     `<button data-group="${g.id}" class="${pickedGroup===g.id?'on':''}">${g.emoji} ${g.label}</button>`).join('');
+  pendingPhoto=undefined; paintPhotoField();
   $('#deletePlant').classList.toggle('hidden',!p);
   openSheet('#sheetPlant');
 }
@@ -865,6 +905,7 @@ $('#fEmoji').onclick=e=>{
   const b=e.target.closest('[data-emoji]'); if(!b) return;
   pickedEmoji=b.dataset.emoji;
   [...$('#fEmoji').children].forEach(c=>c.classList.toggle('on',c===b));
+  paintPhotoField();
   buzz();
 };
 $('#fGroup').onclick=e=>{
@@ -882,8 +923,14 @@ $('#savePlant').onclick=async()=>{
     feedEvery:Math.max(1,parseInt($('#fFeed').value)||21),
     note:$('#fNote').value.trim()
   };
-  if(editingPlant) Object.assign(editingPlant,data);
-  else DB.plants.push(Object.assign({id:'p'+Date.now(),createdAt:today()},data));
+  let targetId;
+  if(editingPlant){ Object.assign(editingPlant,data); targetId=editingPlant.id; }
+  else { const np=Object.assign({id:'p'+Date.now(),createdAt:today()},data); DB.plants.push(np); targetId=np.id; }
+  if(pendingPhoto!==undefined){
+    if(pendingPhoto) await savePhoto(targetId,pendingPhoto);
+    else await dropPhoto(targetId);
+    pendingPhoto=undefined;
+  }
   await saveData(); closeSheets(); buzz('medium');
   toast(editingPlant?'Изменения сохранены':'Растение добавлено');
   currentPlant?renderPlant(currentPlant):renderHome();
@@ -893,6 +940,7 @@ $('#deletePlant').onclick=async()=>{
   if(!await askConfirm('Удалить «'+editingPlant.name+'» вместе со всеми записями?')) return;
   DB.records=DB.records.filter(r=>r.plantId!==editingPlant.id);
   DB.plants=DB.plants.filter(p=>p.id!==editingPlant.id);
+  await dropPhoto(editingPlant.id);
   await saveData(); closeSheets(); toast('Растение удалено'); renderHome();
 };
 
@@ -947,6 +995,134 @@ $('#fertChips').onclick=async e=>{
 $('#rFert').oninput=renderFertChips;
 
 /* ---------- Форма записи ---------- */
+
+/* ---------- Фото растений ----------
+   Лежат отдельно от основных данных: ключи ph_<id>_0..N + ph_<id>_n.
+   Так отметка полива не перезаписывает мегабайты картинок. */
+const PHOTOS={};
+const PARTS={};          // временный склад кусочков при загрузке
+const PCHUNK=4000;          // предел ячейки телеграма — 4096 символов
+const PMAX=44000;           // потолок на одно фото: 11 ячеек
+const PSIDE=400;            // длинная сторона после сжатия
+let pendingPhoto;           // undefined — не трогали, null — убрать, строка — новое
+
+function csGetMany(keys){
+  // getItems есть не во всех версиях — если его нет, читаем по одному
+  if(CS && typeof CS.getItems==='function'){
+    return new Promise(r=>{ try{ CS.getItems(keys,(e,v)=>r(e?{}:(v||{}))); }catch(e){ r({}); } });
+  }
+  return (async()=>{ const o={}; for(const k of keys){ const v=await csGet(k); if(v) o[k]=v; } return o; })();
+}
+function csDel(keys){
+  if(CS && typeof CS.removeItems==='function'){
+    return new Promise(r=>{ try{ CS.removeItems(keys,()=>r()); }catch(e){ r(); } });
+  }
+  return (async()=>{ for(const k of keys){ await new Promise(r=>{ try{ CS.removeItem(k,()=>r()); }catch(e){ r(); } }); } })();
+}
+
+/* Уменьшение и сжатие: давим качество, пока не влезет в потолок */
+function fileToThumb(file){
+  return new Promise(resolve=>{
+    const url=URL.createObjectURL(file);
+    const img=new Image();
+    img.onload=()=>{
+      URL.revokeObjectURL(url);
+      let side=PSIDE, out=null;
+      for(let pass=0; pass<3; pass++){
+        const k=Math.min(1, side/Math.max(img.width,img.height));
+        const w=Math.max(1,Math.round(img.width*k)), h=Math.max(1,Math.round(img.height*k));
+        const c=document.createElement('canvas'); c.width=w; c.height=h;
+        const ctx=c.getContext('2d');
+        ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,h);          // под прозрачный PNG
+        ctx.drawImage(img,0,0,w,h);
+        let q=0.72;
+        out=c.toDataURL('image/jpeg',q);
+        while(out.length>PMAX && q>0.34){ q-=0.08; out=c.toDataURL('image/jpeg',q); }
+        if(out.length<=PMAX) return resolve(out);
+        side=Math.round(side*0.75);                            // не влезло — уменьшаем сторону
+      }
+      resolve(out && out.length<=PMAX ? out : null);
+    };
+    img.onerror=()=>{ URL.revokeObjectURL(url); resolve(null); };
+    img.src=url;
+  });
+}
+
+async function savePhoto(plantId,dataUri){
+  PHOTOS[plantId]=dataUri;
+  lsSet('ph_'+plantId,dataUri);
+  if(!CS) return true;
+  const parts=[]; for(let i=0;i<dataUri.length;i+=PCHUNK) parts.push(dataUri.slice(i,i+PCHUNK));
+  for(let i=0;i<parts.length;i++) await csSet('ph_'+plantId+'_'+i,parts[i]);
+  await csSet('ph_'+plantId+'_n',String(parts.length));
+  return true;
+}
+async function dropPhoto(plantId){
+  delete PHOTOS[plantId];
+  try{ lsDel('ph_'+plantId); }catch(e){}
+  if(!CS) return;
+  const n=parseInt(await csGet('ph_'+plantId+'_n')||'0',10);
+  const keys=['ph_'+plantId+'_n'];
+  for(let i=0;i<n;i++) keys.push('ph_'+plantId+'_'+i);
+  await csDel(keys);
+}
+/* Грузим не на старте, а после первой отрисовки — список появляется сразу */
+async function loadPhotos(){
+  const ids=DB.plants.map(p=>p.id);
+  if(!ids.length) return false;
+  let touched=false;
+  ids.forEach(id=>{ const v=lsGet('ph_'+id); if(v){ PHOTOS[id]=v; touched=true; } });
+  if(!CS) return touched;
+  const counts=await csGetMany(ids.map(id=>'ph_'+id+'_n'));
+  const need=[];
+  ids.forEach(id=>{
+    const n=parseInt(counts['ph_'+id+'_n']||'0',10);
+    for(let i=0;i<n;i++) need.push('ph_'+id+'_'+i);
+  });
+  for(let i=0;i<need.length;i+=50){
+    const got=await csGetMany(need.slice(i,i+50));
+    Object.keys(got).forEach(k=>{ if(got[k]) PARTS[k]=got[k]; });
+  }
+  ids.forEach(id=>{
+    const n=parseInt(counts['ph_'+id+'_n']||'0',10);
+    if(!n) return;
+    let s=''; for(let i=0;i<n;i++) s+=(PARTS['ph_'+id+'_'+i]||'');
+    if(s && s!==PHOTOS[id]){ PHOTOS[id]=s; lsSet('ph_'+id,s); touched=true; }
+  });
+  return touched;
+}
+
+/* Кнопки фото в форме растения */
+$('#fPhotoPick').onclick=()=>{ $('#fPhotoInput').click(); };
+$('#fPhotoInput').onchange=async e=>{
+  const f=e.target.files && e.target.files[0];
+  e.target.value='';
+  if(!f) return;
+  toast('Обрабатываю фото…');
+  const thumb=await fileToThumb(f);
+  if(!thumb){ toast('Не получилось прочитать это фото'); return; }
+  pendingPhoto=thumb;
+  paintPhotoField();
+  buzz('medium');
+};
+$('#fPhotoDrop').onclick=()=>{ pendingPhoto=null; paintPhotoField(); buzz(); };
+function paintPhotoField(){
+  const cur = pendingPhoto!==undefined ? pendingPhoto : (editingPlant?PHOTOS[editingPlant.id]:null);
+  const prev=$('#fPhotoPrev');
+  if(cur){
+    prev.classList.add('has');
+    prev.style.backgroundImage="url('"+cur+"')";
+    prev.textContent='';
+    $('#fPhotoPick').textContent='Заменить фото';
+    $('#fPhotoDrop').classList.remove('hidden');
+  } else {
+    prev.classList.remove('has');
+    prev.style.backgroundImage='';
+    prev.textContent=pickedEmoji||'🪴';
+    $('#fPhotoPick').textContent='Добавить фото';
+    $('#fPhotoDrop').classList.add('hidden');
+  }
+}
 function openRecSheet(plantId,preset){
   recPlantId=plantId; bulkIds=null;
   const p=DB.plants.find(x=>x.id===plantId);
@@ -1072,6 +1248,8 @@ if(TG){ TG.BackButton && TG.BackButton.onClick(()=>{ currentPlant?renderHome():T
   DB=await loadData();
   applyTheme(DB.theme);
   renderHome();
+  // фото грузим следом — чтобы список появился сразу
+  try{ if(await loadPhotos()) (currentPlant?renderPlant(currentPlant):renderHome()); }catch(e){}
 })();
 </script>
 </body>
