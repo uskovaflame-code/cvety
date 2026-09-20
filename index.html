@@ -764,6 +764,17 @@ async function makeBackup(force){
 }
 
 /* Полоса-предупреждение вместо тихой потери данных */
+/* Полоса не накрывает шапку, а сдвигает всё вниз на свою высоту */
+function lockOffset(px){
+  document.body.style.paddingTop = px ? px+'px' : '';
+  const top=document.querySelector('.top');
+  if(top) top.style.top = px ? px+'px' : '';
+}
+function hideLock(){
+  const el=document.getElementById('lockBar');
+  if(el) el.classList.add('hidden');
+  lockOffset(0);
+}
 function showLock(){
   const el=document.getElementById('lockBar');
   if(!el) return;
@@ -771,12 +782,12 @@ function showLock(){
   const txt=document.getElementById('lockText');
   const btn=document.getElementById('lockBtn');
   if(BAK_OFFER){
-    txt.textContent='Не удалось прочитать записи. Есть резервная копия от '+BAK_OFFER.at+'. Записывать ничего не буду, пока не решишь.';
+    txt.textContent='Не удалось прочитать записи. Есть резервная копия от '+shortDate(BAK_OFFER.at)+'. Записывать ничего не буду, пока не решишь.';
     btn.classList.remove('hidden');
-    btn.textContent='Открыть копию от '+BAK_OFFER.at;
+    btn.textContent='Открыть копию от '+shortDate(BAK_OFFER.at);
     btn.onclick=async()=>{
       DB=BAK_OFFER.data; LOADED_RAW=BAK_OFFER.raw; READ_OK=true;
-      el.classList.add('hidden');
+      hideLock();
       await saveData();
       toast('Копия открыта'); renderHome();
     };
@@ -784,6 +795,7 @@ function showLock(){
     txt.textContent='Не удалось прочитать записи. Ничего не записываю, чтобы не потерять. Закрой приложение и открой заново.';
     btn.classList.add('hidden');
   }
+  requestAnimationFrame(()=>{ lockOffset(el.offsetHeight); });
 }
 
 /* ---------- Данные ---------- */
