@@ -57,6 +57,51 @@ function describe(raw,where){
   return res;
 }
 
+/* Выбирает из обрывков целые объекты: считает скобки, уважая строки */
+const BS=String.fromCharCode(92);   /* обратная косая — через код, чтобы не терялась при правках */
+function scanObjects(s){
+  const out=[]; let i=0;
+  while(i<s.length){
+    if(s.charAt(i)!=='{'){ i++; continue; }
+    let d=0,j=i,inStr=false,esc=false,closed=false;
+    for(; j<s.length; j++){
+      const c=s.charAt(j);
+      if(inStr){
+        if(esc) esc=false;
+        else if(c===BS) esc=true;
+        else if(c==='"') inStr=false;
+        continue;
+      }
+      if(c==='"'){ inStr=true; continue; }
+      if(c==='{') d++;
+      else if(c==='}'){ d--; if(d===0){ out.push(s.slice(i,j+1)); closed=true; break; } }
+    }
+    i = closed ? j+1 : i+1;
+  }
+  return out;
+}
+function harvest(raw){
+  const plants=[],records=[],seenP={},seenR={};
+  scanObjects(raw||'').forEach(t=>{
+    let o; try{ o=JSON.parse(t); }catch(e){ return; }
+    if(!o||typeof o!=='object'||Array.isArray(o)) return;
+    if(o.id && o.name!==undefined && o.waterEvery!==undefined){
+      if(!seenP[o.id]){ seenP[o.id]=1; plants.push(o); }
+    } else if(o.plantId && o.date && o.types){
+      const k=o.id||(o.plantId+'|'+o.date+'|'+[].concat(o.types).join(','));
+      if(!seenR[k]){ seenR[k]=1; records.push(o); }
+    }
+  });
+  const have={}; plants.forEach(p=>{ have[p.id]=1; });
+  const lost=[];
+  records.forEach(r=>{ if(!have[r.plantId] && lost.indexOf(r.plantId)<0) lost.push(r.plantId); });
+  lost.forEach((id,k)=>{
+    plants.push({id:id,name:'Растение '+(k+1)+' — впиши название',emoji:'🪴',group:'home',
+                 place:'',waterEvery:7,feedEvery:21,note:'Имя потерялось при сбое, записи целы'});
+  });
+  return {data:{plants:plants,records:records,filter:'all',theme:'light',ferts:[]},lost:lost.length};
+}
+
 let RECOVER=null;   // сюда положим лучший найденный набор
 
 (async function(){
@@ -89,59 +134,75 @@ let RECOVER=null;   // сюда положим лучший найденный �
   }
 
   /* ---- что вообще лежит в облаке ---- */
-  const keys=await csKeys();
-  const main=keys.filter(k=>k===KEY+'_n'||/^plants_\d+$/.test(k)).sort();
-  const photo=keys.filter(k=>/^ph_/.test(k));
-  const other=keys.filter(k=>main.indexOf(k)<0 && photo.indexOf(k)<0);
+  let keys=await csKeys();
+  if(!keys.length){                    // getKeys может не поддерживаться — щупаем вручную
+    const probe=[KEY+'_n'];
+    for(let i=0;i<80;i++) probe.push(KEY+'_'+i);
+    for(const k of probe){ const v=await csGet(k); if(v!=null&&v!=='') keys.push(k); }
+  }
+  const isChunk=k=>k.indexOf(KEY+'_')===0 && /^[0-9]+$/.test(k.slice(KEY.length+1));
+  const idx=keys.filter(isChunk).map(k=>parseInt(k.slice(KEY.length+1),10)).sort((a,b)=>a-b);
+  const photo=keys.filter(k=>k.indexOf('ph_')===0);
+  const other=keys.filter(k=>k.indexOf('ph_')!==0 && k!==KEY+'_n' && !isChunk(k));
+
   add('<div class="box"><h2>Ячейки в облаке</h2>'+
       row('Всего', keys.length+' из 1024', keys.length>=1000?'bad':(keys.length>900?'warn':'ok'))+
-      row('Основные данные', main.length, main.length?'ok':'bad')+
+      row('Кусков основных данных', idx.length, idx.length?'ok':'bad')+
       row('Фото', photo.length, '')+
       row('Прочее', other.length, '')+
-      (keys.length?('<pre>'+esc(keys.slice(0,120).join('  '))+(keys.length>120?' …':'')+'</pre>'):'')+
       '</div>');
 
-  /* ---- собираем основные данные ---- */
+  /* ---- читаем ВСЕ куски, а не только те, что в счётчике ---- */
   const nRaw=await csGet(KEY+'_n');
   const n=parseInt(nRaw||'0',10);
-  let s='', missing=[];
-  for(let i=0;i<n;i++){
+  const chunk={}; const lens=[];
+  for(const i of idx){
     const v=await csGet(KEY+'_'+i);
-    if(v==null||v==='') missing.push(i);
-    s+=(v||'');
+    chunk[i]=v||'';
+    lens.push(i+':'+chunk[i].length);
   }
-  const cloudInfo=describe(s,'cloud');
+  const join=list=>list.map(i=>chunk[i]||'').join('');
 
-  /* ---- ищем «хвосты»: куски за пределами счётчика ---- */
-  let extra=0, sExtra=s;
-  for(let i=n;i<n+40;i++){
-    if(keys.indexOf(KEY+'_'+i)<0) break;
-    const v=await csGet(KEY+'_'+i);
-    if(v==null) break;
-    sExtra+=v; extra++;
-  }
-  const extraInfo=extra?describe(sExtra,'cloud+хвосты'):null;
+  const byCounter = join(idx.filter(i=>i<n));
+  const all       = join(idx);
+  const tail      = join(idx.filter(i=>i>0));     // без первого куска — вдруг его затёрли
 
-  add('<div class="box"><h2>Основные данные в облаке</h2>'+
+  const infoCounter=describe(byCounter,'по счётчику');
+  const infoAll=describe(all,'все куски');
+  const infoTail=describe(tail,'хвост без первого куска');
+
+  add('<div class="box"><h2>Основные данные</h2>'+
       row('Счётчик кусков', nRaw==null?'нет':nRaw, n?'ok':'bad')+
-      row('Собрано символов', cloudInfo.len, cloudInfo.len?'ok':'bad')+
-      row('Пустых кусков', missing.length?missing.join(', '):'нет', missing.length?'bad':'ok')+
-      row('Разбирается', cloudInfo.ok?'да':'НЕТ', cloudInfo.ok?'ok':'bad')+
-      row('Растений', cloudInfo.plants, cloudInfo.plants?'ok':'bad')+
-      row('Записей', cloudInfo.records, cloudInfo.records?'ok':'bad')+
-      (cloudInfo.err?row('Ошибка', cloudInfo.err, 'bad'):'')+
-      (cloudInfo.names?('<div class="note">'+esc(cloudInfo.names)+'</div>'):'')+
-      (extra?row('Лишних кусков за счётчиком', extra, 'warn'):'')+
-      (extraInfo?row('С ними разбирается', extraInfo.ok?('да — растений '+extraInfo.plants):'нет', extraInfo.ok?'ok':'bad'):'')+
-      (cloudInfo.len?('<pre>'+esc(s.slice(0,300))+'…</pre>'):'')+
+      row('Кусков найдено', idx.length, idx.length?'ok':'bad')+
+      row('Длины кусков', lens.join('  ')||'—','')+
       '</div>');
 
-  /* лучший кандидат на восстановление */
+  add('<div class="box"><h2>Что удалось собрать</h2>'+
+      row('По счётчику', infoCounter.ok?('растений '+infoCounter.plants+', записей '+infoCounter.records):'не разбирается', infoCounter.ok?'ok':'bad')+
+      row('Из всех кусков', infoAll.ok?('растений '+infoAll.plants+', записей '+infoAll.records):'не разбирается', infoAll.ok?'ok':'bad')+
+      row('Длина хвоста', tail.length, tail.length?'warn':'')+
+      (tail.length?('<div class="note">Начало хвоста:</div><pre>'+esc(tail.slice(0,400))+'…</pre>'):'')+
+      '</div>');
+
+  /* ---- сборка по кусочкам, если целиком не разобралось ---- */
+  const H=harvest(all + (ls||''));
+  const hRaw=JSON.stringify(H.data);
+  const hInfo=describe(hRaw,'собрано по кусочкам');
+  add('<div class="box"><h2>Сборка по кусочкам</h2>'+
+      row('Растений', hInfo.plants, hInfo.plants?'ok':'bad')+
+      row('Записей', hInfo.records, hInfo.records?'ok':'bad')+
+      row('Без названия', H.lost, H.lost?'warn':'ok')+
+      (H.lost?'<div class="note">Названия таких растений потерялись, но их записи целы — название можно вписать заново.</div>':'')+
+      '</div>');
+
+  window.__RAW={byCounter:byCounter,all:all,tail:tail,n:n,idx:idx,harvested:hRaw};
+
   const cands=[];
-  if(extraInfo && extraInfo.ok && extraInfo.plants) cands.push({raw:sExtra,info:extraInfo});
-  if(cloudInfo.ok && cloudInfo.plants) cands.push({raw:s,info:cloudInfo});
-  if(lsInfo.ok && lsInfo.plants) cands.push({raw:ls,info:lsInfo});
-  cands.sort((a,b)=>(b.info.records-a.info.records)||(b.info.plants-a.info.plants));
+  if(infoAll.ok && infoAll.plants)         cands.push({raw:all,info:infoAll});
+  if(infoCounter.ok && infoCounter.plants) cands.push({raw:byCounter,info:infoCounter});
+  if(lsInfo.ok && lsInfo.plants)           cands.push({raw:ls,info:lsInfo});
+  if(hInfo.ok && (hInfo.records||hInfo.plants)) cands.push({raw:hRaw,info:hInfo});
+  cands.sort(function(a,b){ return (b.info.records-a.info.records)||(b.info.plants-a.info.plants); });
   RECOVER=cands[0]||null;
 
   done(parts);
@@ -163,7 +224,8 @@ function done(parts){
     parts.push('<div class="box"><h2 class="bad">Готового набора не нашлось</h2>'+
       '<div class="note">Пришли снимок этого экрана — по цифрам выше будет видно, что уцелело.</div></div>');
   }
-  parts.push('<div class="box"><button class="ghost" id="copy">Скопировать отчёт</button></div>');
+  parts.push('<div class="box"><button class="ghost" id="copy">Скопировать отчёт</button>'+
+    '<button class="ghost" id="dump">Скопировать сырые данные</button></div>');
   $('#out').innerHTML=parts.join('');
 
   const fix=$('#fix');
@@ -178,6 +240,13 @@ function done(parts){
     }
     fix.textContent='Готово — открой приложение';
     fix.className='ghost';
+  };
+  const dump=$('#dump');
+  if(dump) dump.onclick=()=>{
+    const R=window.__RAW||{};
+    const t='n='+R.n+' idx='+((R.idx||[]).join(','))+'\n---ALL---\n'+(R.all||'')+'\n---TAIL---\n'+(R.tail||'');
+    try{ navigator.clipboard.writeText(t); }catch(e){}
+    dump.textContent='Скопировано — вставь в чат';
   };
   $('#copy').onclick=()=>{
     const t=document.body.innerText;
