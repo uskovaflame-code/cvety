@@ -1165,9 +1165,13 @@ function fileToThumb(file){
 }
 
 async function savePhoto(plantId,dataUri){
+  const p=DB.plants.find(x=>x.id===plantId);
+  const stamp=Date.now();
+  if(p) p.photoAt=stamp;
   forgetPhotoUrl(plantId);
   PHOTOS[plantId]=dataUri;
   lsSet('ph_'+plantId,dataUri);
+  lsSet('ph_'+plantId+'_at',String(stamp));
   if(!CS) return true;
   const parts=[]; for(let i=0;i<dataUri.length;i+=PCHUNK) parts.push(dataUri.slice(i,i+PCHUNK));
   for(let i=0;i<parts.length;i++) await csSet('ph_'+plantId+'_'+i,parts[i]);
@@ -1177,20 +1181,38 @@ async function savePhoto(plantId,dataUri){
 async function dropPhoto(plantId){
   forgetPhotoUrl(plantId);
   delete PHOTOS[plantId];
-  try{ lsDel('ph_'+plantId); }catch(e){}
+  try{ lsDel('ph_'+plantId); lsDel('ph_'+plantId+'_at'); }catch(e){}
+  { const p=DB.plants.find(x=>x.id===plantId); if(p) delete p.photoAt; }
   if(!CS) return;
   const n=parseInt(await csGet('ph_'+plantId+'_n')||'0',10);
   const keys=['ph_'+plantId+'_n'];
   for(let i=0;i<n;i++) keys.push('ph_'+plantId+'_'+i);
   await csDel(keys);
 }
+/* Копия на телефоне считается свежей, если её метка совпадает с меткой
+   растения. Метка живёт в основных данных, поэтому синхронна между
+   устройствами: поменяла фото на другом телефоне — метка разойдётся,
+   и фото перекачается. Иначе облако не трогаем вообще. */
+function photoStamp(p){ return String((p && p.photoAt) || ''); }
+function localPhoto(p){
+  const v=lsGet('ph_'+p.id);
+  if(!v) return null;
+  return (lsGet('ph_'+p.id+'_at')||'')===photoStamp(p) ? v : null;
+}
+
 /* Грузим не на старте, а после первой отрисовки — список появляется сразу */
 async function loadPhotos(){
-  const ids=DB.plants.map(p=>p.id);
-  if(!ids.length) return false;
+  if(!DB.plants.length) return false;
   let touched=false;
-  ids.forEach(id=>{ const v=lsGet('ph_'+id); if(v){ PHOTOS[id]=v; touched=true; } });
-  if(!CS) return touched;
+  const stale=[];
+  DB.plants.forEach(p=>{
+    const v=localPhoto(p);
+    if(v){ if(PHOTOS[p.id]!==v){ forgetPhotoUrl(p.id); PHOTOS[p.id]=v; touched=true; } }
+    else stale.push(p);
+  });
+  if(!CS || !stale.length) return touched;          // всё своё, в облако не ходим
+
+  const ids=stale.map(p=>p.id);
   const counts=await csGetMany(ids.map(id=>'ph_'+id+'_n'));
   const need=[];
   ids.forEach(id=>{
@@ -1201,11 +1223,16 @@ async function loadPhotos(){
     const got=await csGetMany(need.slice(i,i+50));
     Object.keys(got).forEach(k=>{ if(got[k]) PARTS[k]=got[k]; });
   }
-  ids.forEach(id=>{
-    const n=parseInt(counts['ph_'+id+'_n']||'0',10);
+  stale.forEach(p=>{
+    const n=parseInt(counts['ph_'+p.id+'_n']||'0',10);
     if(!n) return;
-    let s=''; for(let i=0;i<n;i++) s+=(PARTS['ph_'+id+'_'+i]||'');
-    if(s && s!==PHOTOS[id]){ forgetPhotoUrl(id); PHOTOS[id]=s; lsSet('ph_'+id,s); touched=true; }
+    let s=''; for(let i=0;i<n;i++) s+=(PARTS['ph_'+p.id+'_'+i]||'');
+    if(s){
+      if(s!==PHOTOS[p.id]){ forgetPhotoUrl(p.id); PHOTOS[p.id]=s; touched=true; }
+      lsSet('ph_'+p.id,s);
+      lsSet('ph_'+p.id+'_at',photoStamp(p));
+      delete PARTS['ph_'+p.id+'_0'];
+    }
   });
   return touched;
 }
