@@ -639,6 +639,28 @@ h1,h2,h3,.pname,.summary-number {font-family:"Times New Roman",Times,serif!impor
 .list-heading,#screenHome>#addPlant,#screenHome>#openData {display:none}
 .card {padding:0;margin-bottom:12px;border-radius:15px;display:grid;grid-template-columns:36% 64%;min-height:182px;overflow:hidden;background:var(--g-card);backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);box-shadow:var(--sh-card)}
 .reference-card-body {min-width:0;display:flex;flex-direction:column;padding:13px 10px 9px}
+.watering-progress {margin:auto 0 12px;padding-top:6px;--scale-ink:#d9eda5;--scale-fill:linear-gradient(90deg,#89ae62,#d9efa2)}
+.save-status {position:fixed;bottom:calc(92px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:75;background:var(--g-sheet);color:var(--ink-2);border:1px solid var(--line);padding:8px 13px;border-radius:12px;max-width:calc(100% - 28px);font-size:12px;box-shadow:0 4px 18px #0003;text-align:center}
+.save-status[data-state="error"] {color:#ffd0a3;border-color:#cf9b60}
+body:has(.save-status:not(.hidden)) .toast {bottom:calc(137px + env(safe-area-inset-bottom))}
+:root[data-theme="light"] .save-status[data-state="error"] {color:#8c451e}
+.watering-last {display:flex;gap:5px;align-items:center;font-size:12px;line-height:1.35;color:var(--ink)}
+.watering-last svg {width:12px;height:15px;flex:none;color:var(--scale-ink);fill:currentColor;stroke-width:1}
+.watering-age {font-size:11px;color:var(--ink-2);line-height:1.35;margin:3px 0 9px 17px}
+.watering-track {height:7px;background:rgba(0,0,0,.24);border-radius:20px;overflow:hidden;box-shadow:inset 0 1px 2px #0002;border:1px solid rgba(223,239,187,.12)}
+.watering-track>span {display:block;height:100%;background:var(--scale-fill);border-radius:20px;transition:width .25s ease}
+.watering-next {font-size:11px;line-height:1.4;color:var(--scale-ink);margin-top:8px;overflow-wrap:anywhere}
+.watering-progress.due {--scale-ink:#f1d899;--scale-fill:linear-gradient(90deg,#b9c47a,#e4c376)}
+.watering-progress.overdue {--scale-ink:#ffd0a3;--scale-fill:linear-gradient(90deg,#d5b173,#e8a86d)}
+.watering-progress.unknown,.watering-progress.future {--scale-ink:var(--ink-2)}
+.watering-track.unknown {border:1px dashed var(--ink-3);background:none;height:7px;opacity:.65;box-shadow:none}
+.watering-track.unknown>span {display:none}
+.card:has(.watering-progress) {min-height:222px}
+:root[data-theme="light"] .watering-progress {--scale-ink:#365c2d;--scale-fill:linear-gradient(90deg,#84ae5a,#466b36)}
+:root[data-theme="light"] .watering-progress.due {--scale-ink:#785b13;--scale-fill:linear-gradient(90deg,#b4bd6b,#aa7b20)}
+:root[data-theme="light"] .watering-progress.overdue {--scale-ink:#8c451e;--scale-fill:linear-gradient(90deg,#be945a,#ac5c2b)}
+:root[data-theme="light"] .watering-track {background:#34502512;border-color:#34502525;box-shadow:none}
+@media(max-width:359px) {.watering-last {font-size:11px}.watering-age,.watering-next {font-size:10px}.card:has(.watering-progress) {min-height:215px}}
 .pname {font-size:23px;line-height:1.05;overflow-wrap:break-word}
 .reference-place {display:flex;align-items:center;gap:5px;margin:8px 0;font-size:11px;line-height:1.4;color:var(--ink-2)}
 .reference-place svg {width:14px;height:14px;flex:none;fill:#d3e89f;color:#d3e89f}
@@ -996,19 +1018,47 @@ async function loadData(){
   return {plants:[],records:[],filter:'all',theme:'light',ferts:[]};
 }
 
-async function saveData(){
+let SAVE_QUEUE=Promise.resolve(), SAVE_VERSION=0;
+function saveData(){
   if(!READ_OK){ showLock(); return false; }         // не читалось — не пишем
   const raw=JSON.stringify(DB);
+  const version=++SAVE_VERSION;
   lsSet(KEY,raw);                                   // локальная копия всегда, она же страховка
-  if(CS){
-    const parts=[]; for(let i=0;i<raw.length;i+=CHUNK) parts.push(raw.slice(i,i+CHUNK));
-    for(let i=0;i<parts.length;i++){
-      if(!await csSet(KEY+'_'+i,parts[i])) return failSave();
+  if(!CS){ LOADED_RAW=raw; return Promise.resolve(true); }
+  setSaveStatus('pending');
+  const job=SAVE_QUEUE.then(async()=>{
+    // A newer queued snapshot contains all preceding actions.
+    if(version!==SAVE_VERSION)return true;
+    try{
+      const parts=[]; for(let i=0;i<raw.length;i+=CHUNK) parts.push(raw.slice(i,i+CHUNK));
+      for(let i=0;i<parts.length;i++){
+        if(!await csSet(KEY+'_'+i,parts[i])){
+          if(version===SAVE_VERSION){setSaveStatus('error');return failSave();}
+          return false;
+        }
+      }
+      if(!await csSet(KEY+'_n',String(parts.length))){
+        if(version===SAVE_VERSION){setSaveStatus('error');return failSave();}
+        return false;
+      }
+      LOADED_RAW=raw;
+      if(version===SAVE_VERSION)setSaveStatus('saved');
+      return true;
+    }catch(e){
+      if(version===SAVE_VERSION){setSaveStatus('error');return failSave();}
+      return false;
     }
-    if(!await csSet(KEY+'_n',String(parts.length))) return failSave();
-  }
-  LOADED_RAW=raw;
-  return true;
+  });
+  SAVE_QUEUE=job.catch(()=>false);
+  return job;
+}
+function setSaveStatus(state){
+  const el=document.getElementById('saveStatus');if(!el)return;
+  el.dataset.state=state;
+  el.textContent=state==='pending'?'Сохраняю в Telegram…':state==='error'?'Сохранено на устройстве · повторить':'Сохранено';
+  el.classList.remove('hidden');
+  clearTimeout(el._timer);
+  if(state==='saved')el._timer=setTimeout(()=>el.classList.add('hidden'),1800);
 }
 function failSave(){
   toast('Телеграм не принял запись — сохранила на телефоне');
@@ -1650,6 +1700,7 @@ $('#rTypes').onclick=e=>{
   renderTypes(); buzz();
 };
 $('#saveRec').onclick=async()=>{
+  if(!READ_OK){showLock();return;}
   if(!pickedTypes.length){ toast('Отметь, что ты сделала'); return; }
   const ids = (bulkIds && bulkIds.length) ? bulkIds : [recPlantId];
   if(!ids.length || !ids[0]){ toast('Не выбрано растение'); return; }
@@ -1665,10 +1716,11 @@ $('#saveRec').onclick=async()=>{
   });
   if(fert) rememberFert(fert);
   const many=ids.length>1;
-  await saveData(); closeSheets(); buzz('medium');
+  const saving=saveData(); closeSheets(); buzz('medium');
   toast(many ? ('Записано · '+ids.length+' '+plural(ids.length,['растение','растения','растений'])) : 'Запись сохранена');
   if(bulkIds){ exitSel(); }
   else { currentPlant?renderPlant(currentPlant):renderHome(); }
+  await saving;
 };
 
 
@@ -1762,9 +1814,11 @@ document.addEventListener('click',async e=>{
     e.stopPropagation();
     const type=q.dataset.quick;
     if(type==='feed'){ openRecSheet(q.dataset.id,'feed'); return; }
+    if(!READ_OK){showLock();return;}
     DB.records.push({id:'r'+Date.now(),plantId:q.dataset.id,date:today(),types:['water'],fert:'',note:''});
-    await saveData(); buzz('medium'); toast('Полив записан · сегодня');
+    const saving=saveData(); buzz('medium'); toast('Полив записан · сегодня');
     currentPlant?renderPlant(currentPlant):renderHome();
+    await saving;
     return;
   }
   const del=e.target.closest('[data-del]');
@@ -1786,7 +1840,8 @@ document.addEventListener('click',async e=>{
 });
 $('#seg').onclick=async e=>{
   const b=e.target.closest('[data-filter]'); if(!b) return;
-  DB.filter=b.dataset.filter; selected.clear(); buzz(); await saveData(); renderHome();
+  DB.filter=b.dataset.filter; selected.clear(); buzz(); renderHome();
+  lsSet('botanik_view_filter',DB.filter);
 };
 $('#themeBtn').onclick=async()=>{
   DB.theme = DB.theme==='dark' ? 'light' : 'dark';
@@ -1904,7 +1959,7 @@ const legacyApplyTheme=applyTheme;
 applyTheme=function(){legacyApplyTheme(lsGet('botanik_glass_theme')||'dark');};
 $('#themeBtn').onclick=()=>{const next=document.documentElement.dataset.theme==='dark'?'light':'dark';lsSet('botanik_glass_theme',next);applyTheme();buzz();};
 THEME_BG.dark='#0b211a';THEME_BG.light='#ecf0e3';
-applyTheme();renderHome();
+applyTheme();
 
 /* Reference-matched composition. The original forms, records and storage are reused. */
 UI_ICONS.home='<path d="m3 10 9-7 9 7v11h-6v-7H9v7H3Z"/>';
@@ -1931,6 +1986,17 @@ const locationRow=document.createElement('div');locationRow.className='location-
 locationRow.innerHTML='<div><h2 id="locationTitle">Мои растения</h2><span id="totalPlants"></span></div>';
 $('#screenHome').prepend(locationRow);locationRow.append($('#seg'));
 const refHome=renderHome,refPlant=renderPlant;
+let indexedRecords=null,indexedLength=-1,latestCare=new Map();
+lastOf=function(id,type){
+ if(indexedRecords!==DB.records||indexedLength!==DB.records.length){
+   latestCare=new Map();indexedRecords=DB.records;indexedLength=DB.records.length;
+   DB.records.forEach(r=>r.types.forEach(t=>{const key=r.plantId+'|'+t,prev=latestCare.get(key);if(!prev||r.date>prev)latestCare.set(key,r.date);}));
+ }
+ return latestCare.get(id+'|'+type)||null;
+};
+document.body.insertAdjacentHTML('beforeend','<button id="saveStatus" class="save-status hidden" role="status" aria-live="polite"></button>');
+$('#saveStatus').onclick=()=>{if($('#saveStatus').dataset.state==='error')saveData();};
+let restoredViewFilter=false;
 function refDateStatus(p,type){
  const last=lastOf(p.id,type);if(!last)return {main:'Нет записи',date:'Добавь первую дату',due:false};
  const interval=Math.max(1,Number(type==='water'?p.waterEvery:p.feedEvery)||1);
@@ -1938,24 +2004,59 @@ function refDateStatus(p,type){
  const left=daysBetween(today(),iso(next));
  return {main:left<=0?'Сегодня':'Через '+left+' '+dayWord(left),date:shortDate(iso(next))+' '+next.getFullYear(),due:left<=0};
 }
+function wateringProgress(p){
+ const last=lastOf(p.id,'water');
+ if(!last)return {state:'unknown',lastLabel:'Полив ещё не отмечен',age:'Добавь первую запись',nextLabel:'Срок пока неизвестен',percent:null};
+ const age=daysBetween(last,today());
+ const interval=Math.max(1,Number(p.waterEvery)||1);
+ const next=new Date(last+'T00:00');next.setDate(next.getDate()+interval);
+ const remaining=daysBetween(today(),iso(next));
+ const lastDate=shortDate(last)+(last.slice(0,4)!==today().slice(0,4)?' '+last.slice(0,4):'');
+ if(age<0)return {state:'future',lastLabel:'Полив указан на '+lastDate,age:'Запись будущей датой',nextLabel:'Проверь дату полива',percent:null};
+ const ageLabel=age===0?'сегодня':age===1?'вчера':age+' '+dayWord(age)+' назад';
+ const nextLabel=remaining<0?'Просрочен на '+(-remaining)+' '+dayWord(-remaining):remaining===0?'Пора полить сегодня':remaining===1?'Следующий полив завтра':'Следующий через '+remaining+' '+dayWord(remaining);
+ return {state:remaining<0?'overdue':remaining<=1?'due':'normal',lastLabel:'Поливала '+lastDate,age:ageLabel,nextLabel,percent:Math.round(Math.max(0,Math.min(100,age/interval*100)))};
+}
+function wateringProgressHtml(p){
+ const s=wateringProgress(p);
+ const description=s.lastLabel+', '+s.age+'. '+s.nextLabel+'.';
+ const bar=s.percent===null?'<div class="watering-track unknown" aria-hidden="true"><span></span></div>':'<div class="watering-track" role="progressbar" aria-label="Срок до следующего полива" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+s.percent+'" aria-valuetext="'+esc(description)+'"><span style="width:'+s.percent+'%"></span></div>';
+ return '<div class="watering-progress '+s.state+'"><div class="watering-last">'+uiIcon('water')+'<span>'+esc(s.lastLabel)+'</span></div><div class="watering-age">'+esc(s.age)+'</div>'+bar+'<div class="watering-next">'+esc(s.nextLabel)+'</div></div>';
+}
 function refArt(p){return p.demoArt?'<div class="reference-art '+esc(p.demoArt)+'" aria-label="Иллюстрация из макета"></div>':PHOTOS[p.id]?'<div class="reference-photo" style="background-image:url(\''+photoUrl(p.id)+'\')"></div>':'<div class="reference-placeholder">'+(p.emoji==='🪴'?uiIcon('leaf'):esc(p.emoji))+'</div>';}
 function refHeader(title,detail){
  $('#title').textContent=title;document.body.classList.toggle('plant-detail',!!detail);
  document.querySelector('.bottom-nav [data-view="history"]').innerHTML=uiIcon('history')+'<span>История</span>';
 }
 renderHome=function(){
- refHome();if(uiView==='history'){refHeader('История ухода');return;}
+ if(uiView==='history'){uiJournal();return;}
+ if(!restoredViewFilter&&DB.plants.length){
+   const filter=lsGet('botanik_view_filter');if(['home','studio','all'].includes(filter))DB.filter=filter;
+   restoredViewFilter=true;
+ }
+ $('#screenHome').classList.remove('hidden');$('#screenPlant').classList.add('hidden');$('#screenJournal').classList.add('hidden');
+ currentPlant=null;
+ try{TG&&TG.BackButton&&TG.BackButton.hide();}catch(e){}
  refHeader('Ботаник');
  $('#locationTitle').textContent=uiView==='care'?'Забота сегодня':'Мои растения';
  $('#totalPlants').textContent=DB.plants.length+' '+plural(DB.plants.length,['растение','растения','растений']);
- document.querySelectorAll('#seg button').forEach(b=>{if(b.dataset.filter==='all'){b.classList.add('reference-all');return;}const name=b.dataset.filter==='home'?'Дом':'Студия';b.innerHTML=uiIcon(b.dataset.filter==='home'?'home':'studio')+name;});
- document.querySelectorAll('.summary-item').forEach(b=>{const icon=b.querySelector('svg');icon.outerHTML='<span class="orb">'+icon.outerHTML+'</span>';const label=b.querySelector('small');label.textContent=b.dataset.care==='water'?'полить':'подкормить';label.insertAdjacentHTML('afterend','<span class="due-caption">нужно сегодня</span>');});
- document.querySelectorAll('#list .card').forEach(card=>{
-   const id=card.dataset.open||card.dataset.pick,p=DB.plants.find(p=>p.id===id);if(!p)return;
-   const status=refDateStatus(p,'water');
-   card.innerHTML=refArt(p)+'<div class="reference-card-body"><div class="pname">'+esc(p.name)+'</div><div class="reference-place">'+uiIcon('home')+esc(gLabel(p.group)+(p.place?' · '+p.place:''))+'</div><div class="reference-status"><span class="orb small">'+uiIcon('water')+'</span><span><span>Нужно полить</span><b>'+esc(status.main.toLowerCase())+'</b></span><span class="chevron">›</span></div>'+(selMode?'<span class="selection-caption">'+(selected.has(id)?'✓ Выбрано':'Нажми для выбора')+'</span>':'<button class="qbtn" data-quick="water" data-id="'+esc(id)+'">'+uiIcon('water')+'Полить</button>')+'</div>';
- });
+ $('#seg').classList.toggle('hidden',!DB.plants.length);
+ $('#seg').innerHTML=GROUPS.map(g=>'<button data-filter="'+g.id+'" class="'+(DB.filter===g.id?'on':'')+'">'+uiIcon(g.id==='home'?'home':'studio')+g.label+'</button>').join('');
+ const shown=DB.plants.filter(inFilter),water=shown.filter(p=>uiDue(p,'water')).length,feed=shown.filter(p=>uiDue(p,'feed')).length;
+ const unknown=shown.filter(p=>!lastOf(p.id,'water')||!lastOf(p.id,'feed')).length;
+ $('#todaySummary').classList.toggle('hidden',!shown.length);
+ $('#todaySummary').innerHTML='<div class="summary-heading"><h2>Сегодня</h2></div><div class="summary-grid">'+[['water',water,'полить'],['feed',feed,'подкормить']].map(([type,n,label])=>'<button class="summary-item '+(type==='feed'?'feed':'')+'" data-care="'+type+'"><span class="orb">'+uiIcon(type==='water'?'water':'leaf')+'</span><span><b class="summary-number">'+n+'</b><small>'+label+'</small><span class="due-caption">нужно сегодня</span></span></button>').join('')+'</div>'+(unknown?'<p class="summary-caption">Для '+unknown+' '+plural(unknown,['растения','растений','растений'])+' ещё не все даты ухода известны.</p>':'');
+ $('#bulkBar').classList.toggle('hidden',!selMode);document.body.classList.toggle('bulk',selMode);
+ if(selMode)updateBulkBar(shown);
+ const visible=shown.filter(p=>uiView!=='care'||selMode||uiNeedsCare(p));
+ visible.sort((a,b)=>dryness(b)-dryness(a));
+ $('#list').innerHTML=visible.length?visible.map(p=>{
+   const id=p.id,picked=selected.has(id);
+   return '<div class="card '+(picked?'picked':'')+'" '+(selMode?'data-pick':'data-open')+'="'+esc(id)+'" tabindex="0" role="button" aria-label="'+esc((selMode?'Выбрать: ':'Открыть: ')+p.name)+'">'+refArt(p)+'<div class="reference-card-body"><div class="pname">'+esc(p.name)+'</div><div class="reference-place">'+uiIcon('home')+esc(gLabel(p.group)+(p.place?' · '+p.place:''))+'</div>'+wateringProgressHtml(p)+(selMode?'<span class="selection-caption">'+(picked?'✓ Выбрано':'Нажми для выбора')+'</span>':'<button class="qbtn" data-quick="water" data-id="'+esc(id)+'">'+uiIcon('water')+'Полить</button>')+'</div></div>';
+ }).join(''):'<div class="empty"><div class="leaf">🌿</div><h3>'+ (uiView==='care'?'На сегодня всё':DB.plants.length?'В этом разделе пусто':'Здесь будут твои растения')+'</h3><p>'+(uiView==='care'?'По сохранённым датам и интервалам срочных дел нет.':'Добавь растение через меню вверху.')+'</p></div>';
+ uiNav();
 };
+$('#list').addEventListener('keydown',e=>{const card=e.target.closest('.card');if(card&&e.target===card&&(e.key==='Enter'||e.key===' ')){e.preventDefault();card.click();}});
 renderPlant=function(id){
  refPlant(id);const p=DB.plants.find(p=>p.id===id);if(!p)return;
  refHeader(p.name,true);
