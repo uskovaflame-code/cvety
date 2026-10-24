@@ -640,6 +640,27 @@ h1,h2,h3,.pname,.summary-number {font-family:"Times New Roman",Times,serif!impor
 .card {padding:0;margin-bottom:12px;border-radius:15px;display:grid;grid-template-columns:36% 64%;min-height:182px;overflow:hidden;background:var(--g-card);backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);box-shadow:var(--sh-card)}
 .reference-card-body {min-width:0;display:flex;flex-direction:column;padding:13px 10px 9px}
 .watering-progress {margin:auto 0 12px;padding-top:6px;--scale-ink:#d9eda5;--scale-fill:linear-gradient(90deg,#89ae62,#d9efa2)}
+.water-method-note,.water-method-history {display:flex;align-items:center;gap:6px;font-size:11px;line-height:1.45;color:var(--ink-2);margin:0 0 9px}
+.water-method-history {margin:6px 0 0}
+.water-method-note svg,.water-method-history svg {width:14px;height:16px;flex:none;color:var(--green)}
+.card:has(.watering-progress .water-method-note) {min-height:248px}
+.water-sheet-plant {font-size:14px;color:var(--ink-2);margin:-5px 0 20px}
+.water-method-options {display:flex;flex-direction:column;gap:10px}
+.water-method-option,.water-method-radio {display:flex;align-items:center;gap:12px;min-height:72px;padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--g-glass);color:var(--ink);font-size:15px;text-align:left;cursor:pointer}
+.water-method-symbol {display:inline-flex;align-items:center;justify-content:center;flex:none;width:40px;height:40px;background:var(--g-soft);border-radius:13px;color:var(--green)}
+.water-method-symbol svg {width:24px;height:26px}
+.water-method-arrow {margin-left:auto;font:25px Arial;color:var(--ink-2)}
+.water-method-option:active {background:var(--g-soft)}
+.water-method-hint {font-size:12px;color:var(--ink-2);line-height:1.5;margin:16px 0 5px}
+.water-method-field {border:0;padding:0;min-width:0}
+.water-method-field legend {font-size:11px;color:var(--ink-2);margin-bottom:9px;letter-spacing:.04em}
+.water-method-field .water-method-radio {display:flex;margin:0;letter-spacing:0;font-size:13px;min-height:62px}
+.water-method-radio input {width:17px;height:17px;flex:none;accent-color:var(--green);margin:0;box-shadow:none;padding:0}
+.water-method-radio:has(input:checked) {border-color:var(--green);background:var(--g-soft)}
+.water-method-radio:has(input:focus-visible) {outline:2px solid var(--green);outline-offset:2px}
+.water-method-radio .water-method-symbol {width:32px;height:34px;border-radius:10px}
+.water-method-radio .water-method-symbol svg {width:20px;height:22px}
+@media(max-width:359px) {.water-method-note,.water-method-history {font-size:10px}.water-method-option {font-size:13px}}
 .save-status {position:fixed;bottom:calc(92px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:75;background:var(--g-sheet);color:var(--ink-2);border:1px solid var(--line);padding:8px 13px;border-radius:12px;max-width:calc(100% - 28px);font-size:12px;box-shadow:0 4px 18px #0003;text-align:center}
 .save-status[data-state="error"] {color:#ffd0a3;border-color:#cf9b60}
 body:has(.save-status:not(.hidden)) .toast {bottom:calc(137px + env(safe-area-inset-bottom))}
@@ -851,6 +872,13 @@ body:has(.save-status:not(.hidden)) .toast {bottom:calc(137px + env(safe-area-in
 </div>
 
 <!-- ФОРМА ЗАПИСИ -->
+<div class="sheet" id="sheetWater" role="dialog" aria-modal="true" aria-labelledby="waterSheetTitle">
+  <div class="grab"></div>
+  <h3 id="waterSheetTitle">Как полила?</h3>
+  <p id="waterSheetPlant" class="water-sheet-plant"></p>
+  <div class="water-method-options" id="quickWaterMethods"></div>
+  <p class="water-method-hint">Выбери способ — полив запишется за сегодня.</p>
+</div>
 <div class="sheet" id="sheetRec">
   <div class="grab"></div>
   <h3 id="recTitle">Запись</h3>
@@ -858,6 +886,10 @@ body:has(.save-status:not(.hidden)) .toast {bottom:calc(137px + env(safe-area-in
     <label>ЧТО СДЕЛАЛА</label>
     <div class="types" id="rTypes"></div>
   </div>
+  <fieldset class="field water-method-field hidden" id="waterMethodField">
+    <legend>КАК ПОЛИВАЛА</legend>
+    <div class="water-method-options" id="recordWaterMethods"></div>
+  </fieldset>
   <div class="field">
     <label>ДАТА</label>
     <input id="rDate" type="date">
@@ -1139,6 +1171,22 @@ const TYPES=[
   {id:'spray',label:'Опрыскивание',cls:'other'},
   {id:'repot',label:'Пересадка',cls:'other'}
 ];
+const WATER_METHODS=[
+  {id:'top',label:'Обычный полив сверху',symbol:'💧'},
+  {id:'drench',label:'Обильный пролив',symbol:'🚿'}
+];
+let quickWaterPlantId=null;
+function waterMethodInfo(record){
+  return record&&record.types.includes('water')?WATER_METHODS.find(m=>m.id===record.waterMethod)||null:null;
+}
+function waterMethodSymbol(method){
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(method==='drench'?'<path d="M5 9a7 7 0 0 1 14 0H5ZM12 2V1M7 13v2m5-2v2m5-2v2M5 19v2m7-2v2m7-2v2"/>':'<path d="M12 3C9 7 5 11 5 15a7 7 0 0 0 14 0c0-4-4-8-7-12Z"/>')+'</svg>';
+}
+function addWaterMethod(record,method){
+  if(!record.types.includes('water'))return record;
+  if(!WATER_METHODS.some(m=>m.id===method))throw new Error('Не выбран способ полива');
+  return Object.assign({},record,{waterMethod:method});
+}
 let pickedEmoji='🪴', pickedTypes=[], pickedGroup='home';
 const GROUPS=[{id:'home',label:'Дом',emoji:'🏠'},{id:'studio',label:'Студия',emoji:'💅'}];
 const gLabel=id=>(GROUPS.find(g=>g.id===id)||GROUPS[0]).label;
@@ -1156,7 +1204,7 @@ const timesWord=n=>plural(n,['раз','раза','раз']);
 function shortDate(d){ const x=new Date(d+'T00:00'); return x.getDate()+' '+MN[x.getMonth()].slice(0,3); }
 
 /* ---------- Вычисления ---------- */
-const recsOf=id=>DB.records.filter(r=>r.plantId===id).sort((a,b)=>b.date.localeCompare(a.date));
+const recsOf=id=>DB.records.filter(r=>r.plantId===id).reverse().sort((a,b)=>b.date.localeCompare(a.date));
 function lastOf(id,type){ const r=recsOf(id).find(r=>r.types.includes(type)); return r?r.date:null; }
 function dryness(p){                       // 0 — только полила, 1 и больше — пора
   const l=lastOf(p.id,'water'); if(!l) return 1.2;
@@ -1179,6 +1227,7 @@ function openSheet(id){
 }
 function closeSheets(){
   $('#scrim').classList.remove('on'); $('#sheetPlant').classList.remove('on'); $('#sheetRec').classList.remove('on'); $('#sheetData').classList.remove('on');
+  $('#sheetWater').classList.remove('on');quickWaterPlantId=null;
   if(selMode){ $('#bulkBar').classList.remove('hidden'); document.body.classList.add('bulk'); }
 }
 $('#scrim').onclick=closeSheets;
@@ -1360,6 +1409,7 @@ function renderPlant(id){
           <div class="rdate">${shortDate(r.date)}</div>
           <div class="rmain">
             <div class="tags">${r.types.map(t=>{const T=TYPES.find(x=>x.id===t);return T?`<span class="tag ${T.cls}">${T.label}</span>`:''}).join('')}</div>
+            ${waterMethodInfo(r)?`<div class="water-method-history">${waterMethodSymbol(r.waterMethod)}${esc(waterMethodInfo(r).label)}</div>`:''}
             ${r.fert?`<div class="rfert">${esc(r.fert)}</div>`:''}
             ${r.note?`<div class="rnote">${esc(r.note)}</div>`:''}
           </div>
@@ -1676,6 +1726,7 @@ function openRecSheet(plantId,preset){
   pickedTypes=preset?[preset]:['water'];
   $('#rDate').value=today();
   $('#rFert').value=''; $('#rNote').value='';
+  renderWaterMethodOptions();
   renderTypes(); openSheet('#sheetRec');
 }
 function openBulkSheet(ids){
@@ -1685,6 +1736,7 @@ function openBulkSheet(ids){
   pickedTypes=['water'];
   $('#rDate').value=today();
   $('#rFert').value=''; $('#rNote').value='';
+  renderWaterMethodOptions();
   renderTypes(); openSheet('#sheetRec');
 }
 function renderTypes(){
@@ -1692,7 +1744,30 @@ function renderTypes(){
   const showFert=pickedTypes.includes('feed');
   $('#fertField').classList.toggle('hidden',!showFert);
   if(showFert) prefillFert();
+  $('#waterMethodField').classList.toggle('hidden',!pickedTypes.includes('water'));
 }
+function renderWaterMethodOptions(){
+  $('#recordWaterMethods').innerHTML=WATER_METHODS.map(m=>'<label class="water-method-radio"><input type="radio" name="waterMethod" value="'+m.id+'"><span class="water-method-symbol" aria-hidden="true">'+waterMethodSymbol(m.id)+'</span><span>'+m.label+'</span></label>').join('');
+}
+function openQuickWaterSheet(id){
+  if(!READ_OK){showLock();return;}
+  const p=DB.plants.find(p=>p.id===id);if(!p)return;
+  quickWaterPlantId=id;
+  $('#waterSheetPlant').textContent=p.name;
+  $('#quickWaterMethods').innerHTML=WATER_METHODS.map(m=>'<button class="water-method-option" data-water-method="'+m.id+'"><span class="water-method-symbol" aria-hidden="true">'+waterMethodSymbol(m.id)+'</span><span>'+m.label+'</span><span class="water-method-arrow" aria-hidden="true">›</span></button>').join('');
+  openSheet('#sheetWater');
+}
+$('#quickWaterMethods').onclick=async e=>{
+  const b=e.target.closest('[data-water-method]');if(!b)return;
+  if(!READ_OK){showLock();return;}
+  const id=quickWaterPlantId;
+  if(!id||!DB.plants.some(p=>p.id===id))return;
+  const method=WATER_METHODS.find(m=>m.id===b.dataset.waterMethod);if(!method)return;
+  DB.records.push(addWaterMethod({id:'r'+Date.now(),plantId:id,date:today(),types:['water'],fert:'',note:''},method.id));
+  const saving=saveData();closeSheets();buzz('medium');toast('Полив записан · '+method.label.toLowerCase());
+  currentPlant?renderPlant(currentPlant):renderHome();
+  await saving;
+};
 $('#rTypes').onclick=e=>{
   const b=e.target.closest('[data-type]'); if(!b) return;
   const id=b.dataset.type;
@@ -1702,6 +1777,10 @@ $('#rTypes').onclick=e=>{
 $('#saveRec').onclick=async()=>{
   if(!READ_OK){showLock();return;}
   if(!pickedTypes.length){ toast('Отметь, что ты сделала'); return; }
+  const method=$('#recordWaterMethods input:checked')?.value;
+  if(pickedTypes.includes('water')&&!WATER_METHODS.some(m=>m.id===method)){
+    toast('Выбери способ полива');$('#waterMethodField').scrollIntoView({block:'nearest'});return;
+  }
   const ids = (bulkIds && bulkIds.length) ? bulkIds : [recPlantId];
   if(!ids.length || !ids[0]){ toast('Не выбрано растение'); return; }
   const date=$('#rDate').value||today();
@@ -1709,10 +1788,10 @@ $('#saveRec').onclick=async()=>{
   const note=$('#rNote').value.trim();
   const stamp=Date.now();
   ids.forEach((pid,i)=>{
-    DB.records.push({
+    DB.records.push(addWaterMethod({
       id:'r'+(stamp+i), plantId:pid, date,
       types:[...pickedTypes], fert, note
-    });
+    },method));
   });
   if(fert) rememberFert(fert);
   const many=ids.length>1;
@@ -1814,11 +1893,7 @@ document.addEventListener('click',async e=>{
     e.stopPropagation();
     const type=q.dataset.quick;
     if(type==='feed'){ openRecSheet(q.dataset.id,'feed'); return; }
-    if(!READ_OK){showLock();return;}
-    DB.records.push({id:'r'+Date.now(),plantId:q.dataset.id,date:today(),types:['water'],fert:'',note:''});
-    const saving=saveData(); buzz('medium'); toast('Полив записан · сегодня');
-    currentPlant?renderPlant(currentPlant):renderHome();
-    await saving;
+    openQuickWaterSheet(q.dataset.id);
     return;
   }
   const del=e.target.closest('[data-del]');
@@ -1938,10 +2013,10 @@ renderPlant=function(id){originalPlant(id);$('#screenJournal').classList.add('hi
 function uiJournal(){
  $('#screenHome').classList.add('hidden');$('#screenPlant').classList.add('hidden');$('#screenJournal').classList.remove('hidden');
  $('#title').textContent='История ухода';$('#topAdd').classList.add('hidden');currentPlant=null;
- const records=[...DB.records].sort((a,b)=>b.date.localeCompare(a.date));
+ const records=[...DB.records].reverse().sort((a,b)=>b.date.localeCompare(a.date));
  $('#journalRows').innerHTML=records.length?records.map(r=>{
    const p=DB.plants.find(p=>p.id===r.plantId);
-   return '<div class="row"><div class="rdate">'+esc(shortDate(r.date))+'<br>'+esc(r.date.slice(0,4))+'</div><div class="rmain">'+(p?'<button class="journal-plant" data-open="'+esc(p.id)+'">'+esc(p.name)+'</button>':'<span>Растение удалено</span>')+'<div class="tags">'+r.types.map(t=>{const type=TYPES.find(x=>x.id===t);return type?'<span class="tag '+type.cls+'">'+type.label+'</span>':'';}).join('')+'</div>'+(r.fert?'<div class="rfert">'+esc(r.fert)+'</div>':'')+(r.note?'<div class="rnote">'+esc(r.note)+'</div>':'')+'</div></div>';
+   return '<div class="row"><div class="rdate">'+esc(shortDate(r.date))+'<br>'+esc(r.date.slice(0,4))+'</div><div class="rmain">'+(p?'<button class="journal-plant" data-open="'+esc(p.id)+'">'+esc(p.name)+'</button>':'<span>Растение удалено</span>')+'<div class="tags">'+r.types.map(t=>{const type=TYPES.find(x=>x.id===t);return type?'<span class="tag '+type.cls+'">'+type.label+'</span>':'';}).join('')+'</div>'+(waterMethodInfo(r)?'<div class="water-method-history">'+waterMethodSymbol(r.waterMethod)+esc(waterMethodInfo(r).label)+'</div>':'')+(r.fert?'<div class="rfert">'+esc(r.fert)+'</div>':'')+(r.note?'<div class="rnote">'+esc(r.note)+'</div>':'')+'</div></div>';
  }).join(''):'<p class="psub">Здесь появятся поливы, подкормки, пересадки и опрыскивания.</p>';
  uiNav();
 }
@@ -1986,11 +2061,11 @@ const locationRow=document.createElement('div');locationRow.className='location-
 locationRow.innerHTML='<div><h2 id="locationTitle">Мои растения</h2><span id="totalPlants"></span></div>';
 $('#screenHome').prepend(locationRow);locationRow.append($('#seg'));
 const refHome=renderHome,refPlant=renderPlant;
-let indexedRecords=null,indexedLength=-1,latestCare=new Map();
+let indexedRecords=null,indexedLength=-1,latestCare=new Map(),latestCareRecords=new Map();
 lastOf=function(id,type){
  if(indexedRecords!==DB.records||indexedLength!==DB.records.length){
-   latestCare=new Map();indexedRecords=DB.records;indexedLength=DB.records.length;
-   DB.records.forEach(r=>r.types.forEach(t=>{const key=r.plantId+'|'+t,prev=latestCare.get(key);if(!prev||r.date>prev)latestCare.set(key,r.date);}));
+   latestCare=new Map();latestCareRecords=new Map();indexedRecords=DB.records;indexedLength=DB.records.length;
+   for(let i=DB.records.length-1;i>=0;i--){const r=DB.records[i];r.types.forEach(t=>{const key=r.plantId+'|'+t,prev=latestCare.get(key);if(!prev||r.date>prev){latestCare.set(key,r.date);latestCareRecords.set(key,r);}});}
  }
  return latestCare.get(id+'|'+type)||null;
 };
@@ -2019,9 +2094,10 @@ function wateringProgress(p){
 }
 function wateringProgressHtml(p){
  const s=wateringProgress(p);
+ const method=waterMethodInfo(latestCareRecords.get(p.id+'|water'));
  const description=s.lastLabel+', '+s.age+'. '+s.nextLabel+'.';
  const bar=s.percent===null?'<div class="watering-track unknown" aria-hidden="true"><span></span></div>':'<div class="watering-track" role="progressbar" aria-label="Срок до следующего полива" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+s.percent+'" aria-valuetext="'+esc(description)+'"><span style="width:'+s.percent+'%"></span></div>';
- return '<div class="watering-progress '+s.state+'"><div class="watering-last">'+uiIcon('water')+'<span>'+esc(s.lastLabel)+'</span></div><div class="watering-age">'+esc(s.age)+'</div>'+bar+'<div class="watering-next">'+esc(s.nextLabel)+'</div></div>';
+ return '<div class="watering-progress '+s.state+'"><div class="watering-last">'+uiIcon('water')+'<span>'+esc(s.lastLabel)+'</span></div><div class="watering-age">'+esc(s.age)+'</div>'+(method?'<div class="water-method-note">'+waterMethodSymbol(method.id)+'<span>'+esc(method.label)+'</span></div>':'')+bar+'<div class="watering-next">'+esc(s.nextLabel)+'</div></div>';
 }
 function refArt(p){return p.demoArt?'<div class="reference-art '+esc(p.demoArt)+'" aria-label="Иллюстрация из макета"></div>':PHOTOS[p.id]?'<div class="reference-photo" style="background-image:url(\''+photoUrl(p.id)+'\')"></div>':'<div class="reference-placeholder">'+(p.emoji==='🪴'?uiIcon('leaf'):esc(p.emoji))+'</div>';}
 function refHeader(title,detail){
