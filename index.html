@@ -695,6 +695,10 @@ body:has(.save-status:not(.hidden)) .toast {bottom:calc(137px + env(safe-area-in
 .qbtn svg {height:23px;width:18px;fill:currentColor;stroke-width:1}
 .qbtn.feed {font-weight:400;border-color:#ccdc9e;background:linear-gradient(120deg,#b8d98a13,#142d1e44);color:#e7f3b8;box-shadow:none}
 .reference-photo,.reference-art,.reference-placeholder {min-height:100%;width:100%;background-position:center;background-size:cover}
+.reference-photo.curated-photo {position:relative;overflow:hidden;background:linear-gradient(160deg,rgba(175,205,143,.07),rgba(15,42,26,.16))}
+.curated-photo img {position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:6px;display:block}
+.reference-cover .curated-photo img {padding:8px}
+#fPhotoPrev.has {background-size:contain;background-repeat:no-repeat}
 .reference-placeholder {display:grid;place-items:center;background:linear-gradient(140deg,#a8c47424,#34502c44);font-size:45px;color:var(--green)}
 .reference-placeholder svg {width:58px;height:80px;opacity:.85;stroke-width:1}
 .reference-art {background-image:none;background-repeat:no-repeat}
@@ -1959,6 +1963,52 @@ const UI_ICONS={
  more:'<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>'
 };
 const uiIcon=name=>'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+UI_ICONS[name]+'</svg>';
+// Selected photos are presentation assets; existing cloud photos stay intact.
+const CURATED_PLANT_PHOTOS={
+  "p1787656177194": {
+    "name": "Спатифиллум даймонд (маленький)",
+    "group": "studio",
+    "url": "plant-spathiphyllum-diamond-small-20261028.webp",
+    "version": 1793208536243
+  },
+  "p1789636330054": {
+    "name": "Замиокулькас (большой)",
+    "group": "studio",
+    "url": "plant-zamioculcas-large-20261028.webp",
+    "version": 1793208536243
+  },
+  "p1787657318858": {
+    "name": "Суккуленты",
+    "group": "studio",
+    "url": "plant-succulents-studio-20261028.webp",
+    "version": 1793208536243
+  },
+  "p1787657218563": {
+    "name": "Лирата вариегат",
+    "group": "studio",
+    "url": "plant-ficus-lyrata-variegated-20261028.webp",
+    "version": 1793208536243
+  }
+};
+function curatedPhotoFor(p){
+ const asset=CURATED_PLANT_PHOTOS[p.id];
+ if(!asset||p.photoPresetHidden||Number(p.photoAt||0)>asset.version)return null;
+ return asset;
+}
+const previousDropPhoto=dropPhoto;
+dropPhoto=async function(id){
+ const p=DB.plants.find(p=>p.id===id);
+ if(p&&CURATED_PLANT_PHOTOS[id])p.photoPresetHidden=true;
+ return previousDropPhoto(id);
+};
+const previousPaintPhotoField=paintPhotoField;
+paintPhotoField=function(){
+ previousPaintPhotoField();
+ const asset=editingPlant&&pendingPhoto===undefined?curatedPhotoFor(editingPlant):null;
+ if(!asset)return;
+ const preview=$('#fPhotoPrev');preview.classList.add('has');preview.textContent='';preview.style.backgroundImage="url('"+asset.url+"')";
+ $('#fPhotoPick').textContent='Заменить фото';$('#fPhotoDrop').classList.remove('hidden');
+};
 let uiView='plants', uiCareType=null;
 const originalHome=renderHome, originalPlant=renderPlant;
 document.querySelector('.top-in > div').insertAdjacentHTML('afterbegin','<div class="brandline">'+uiIcon('leaf')+'Ботаник</div>');
@@ -2099,7 +2149,11 @@ function wateringProgressHtml(p){
  const bar=s.percent===null?'<div class="watering-track unknown" aria-hidden="true"><span></span></div>':'<div class="watering-track" role="progressbar" aria-label="Срок до следующего полива" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+s.percent+'" aria-valuetext="'+esc(description)+'"><span style="width:'+s.percent+'%"></span></div>';
  return '<div class="watering-progress '+s.state+'"><div class="watering-last">'+uiIcon('water')+'<span>'+esc(s.lastLabel)+'</span></div><div class="watering-age">'+esc(s.age)+'</div>'+(method?'<div class="water-method-note">'+waterMethodSymbol(method.id)+'<span>'+esc(method.label)+'</span></div>':'')+bar+'<div class="watering-next">'+esc(s.nextLabel)+'</div></div>';
 }
-function refArt(p){return p.demoArt?'<div class="reference-art '+esc(p.demoArt)+'" aria-label="Иллюстрация из макета"></div>':PHOTOS[p.id]?'<div class="reference-photo" style="background-image:url(\''+photoUrl(p.id)+'\')"></div>':'<div class="reference-placeholder">'+(p.emoji==='🪴'?uiIcon('leaf'):esc(p.emoji))+'</div>';}
+function refArt(p){
+ const asset=curatedPhotoFor(p);
+ if(asset)return '<div class="reference-photo curated-photo"><img src="'+esc(asset.url)+'" alt="'+esc(p.name)+'" loading="lazy" decoding="async"></div>';
+ return p.demoArt?'<div class="reference-art '+esc(p.demoArt)+'" aria-label="Иллюстрация из макета"></div>':PHOTOS[p.id]?'<div class="reference-photo" style="background-image:url(\''+photoUrl(p.id)+'\')"></div>':'<div class="reference-placeholder">'+(p.emoji==='🪴'?uiIcon('leaf'):esc(p.emoji))+'</div>';
+}
 function refHeader(title,detail){
  $('#title').textContent=title;document.body.classList.toggle('plant-detail',!!detail);
  document.querySelector('.bottom-nav [data-view="history"]').innerHTML=uiIcon('history')+'<span>История</span>';
